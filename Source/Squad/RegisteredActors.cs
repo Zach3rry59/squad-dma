@@ -129,7 +129,8 @@ namespace squad_dma
                 initialActorScatterMap.Execute();
 
                 var actorBaseWithName = new Dictionary<ulong, uint>();
-                for (int i = 0; i < count; i++) {
+                for (int i = 0; i < count; i++)
+                {
                     if (!initialActorScatterMap.Results[i][0].TryGetResult<ulong>(out var actorAddr) || actorAddr == 0)
                         continue;
                     if (!initialActorScatterMap.Results[i][1].TryGetResult<uint>(out var actorNameId) || actorNameId == 0)
@@ -138,8 +139,10 @@ namespace squad_dma
                 }
 
                 var notUpdated = new HashSet<ulong>(_actors.Keys);
-                foreach (var item in actorBaseWithName) {
-                    if (_actors.ContainsKey(item.Key) && _actors[item.Key].NameId == item.Value) {
+                foreach (var item in actorBaseWithName)
+                {
+                    if (_actors.ContainsKey(item.Key) && _actors[item.Key].NameId == item.Value)
+                    {
                         notUpdated.Remove(item.Key);
                         actorBaseWithName.Remove(item.Key);
                     }
@@ -155,32 +158,49 @@ namespace squad_dma
                 var playersNameIDs = names.Where(x => x.Value.StartsWith("BP_Soldier") || Names.TechNames.ContainsKey(x.Value)).ToDictionary();
                 var filteredActors = actorBaseWithName.Where(actor => playersNameIDs.ContainsKey(actor.Value)).Select(actor => actor.Key).ToList();
                 count = filteredActors.Count;
-                for (int i = 0; i < count; i++) {
+                for (int i = 0; i < count; i++)
+                {
                     var actorAddr = filteredActors[i];
                     var nameId = actorBaseWithName[actorAddr];
                     var actorName = playersNameIDs[nameId];
                     var team = Team.Unknown;
                     var actorType = Names.TechNames.GetValueOrDefault(actorName, ActorType.Player);
-                    if (actorType == ActorType.Player) {
+                    if (actorType == ActorType.Player)
+                    {
                         team = Names.Teams.GetValueOrDefault(actorName[..14], Team.Unknown);
                     }
-                    if (_actors.TryGetValue(actorAddr, out var actor)) {
-                        if (actor.ErrorCount > 50) {
+                    if (_actors.TryGetValue(actorAddr, out var actor))
+                    {
+                        if (actor.ErrorCount > 50)
+                        {
                             Program.Log($"Existing player '{actor.Base}' being reallocated due to excessive errors...");
                             reallocateActor(actorAddr, team, actorType, nameId);
-                        } else if (actor.Base != actorAddr) {
+                        }
+                        else if (actor.Base != actorAddr)
+                        {
                             Program.Log($"Existing player '{actor.Base}' being reallocated due to new base address...");
                             reallocateActor(actorAddr, team, actorType, nameId);
                         }
-                    } else {
+                    }
+                    else
+                    {
                         reallocateActor(actorAddr, team, actorType, nameId);
                     }
                     _actors[actorAddr].Name = actorName;
                     notUpdated.Remove(actorAddr);
+                    _actors[actorAddr].MissingCount = 0; // Reset MissingCount when actor is found
                 }
 
-                foreach (var actorIdToRemove in notUpdated) {
-                    _actors.TryRemove(actorIdToRemove, out var _);
+                foreach (var actorId in notUpdated)
+                {
+                    if (_actors.TryGetValue(actorId, out var actor))
+                    {
+                        actor.MissingCount++;
+                        if (actor.MissingCount > 3)
+                        { // Remove after 3 missed cycles
+                            _actors.TryRemove(actorId, out var _);
+                        }
+                    }
                 }
             }
             catch (DMAShutdown)

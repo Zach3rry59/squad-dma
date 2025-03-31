@@ -20,6 +20,7 @@ namespace squad_dma
         public int SquadID { get; set; } = -1;
         public List<UActor> MySquadMembers { get; } = new List<UActor>();
         public Team Team { get; set; } = Team.Unknown;
+        public int MissingCount { get; set; } = 0;
 
         public bool IsFriendly()
         {

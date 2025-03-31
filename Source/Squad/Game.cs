@@ -389,42 +389,50 @@ namespace squad_dma
             _hasPipScope = scatterMap.Results[0][2].TryGetResult<ulong>(out ulong pipScopePtr) && pipScopePtr != 0;
             float weaponFOV = scatterMap.Results[0][3].TryGetResult<float>(out float currFOV) && currFOV > 10f && currFOV < 180f ? currFOV : cameraFOV;
 
-            _currentFOV = _isAimingDownSights ? weaponFOV : cameraFOV;
-
-            if (_isAimingDownSights && _hasPipScope && pipScopePtr != 0)
+            float finalFOV = cameraFOV; // Default to camera FOV
+            if (_isAimingDownSights)
             {
-                UpdateScopeMagnification(scatterMap, pipScopePtr, weaponFOV);
+                finalFOV = weaponFOV; // Set to ADS FOV initially
+                if (_hasPipScope && pipScopePtr != 0)
+                {
+                    UpdateScopeMagnification(pipScopePtr, weaponFOV, ref finalFOV); // Adjust for magnification
+                }
             }
 
-            // Program.Log($"ADS: {_isAimingDownSights}, HasPipScope: {_hasPipScope}, CurrentFOV: {_currentFOV}");
+            // Assign the final FOV only once
+            _currentFOV = finalFOV;
+
+            //Program.Log($"ADS: {_isAimingDownSights}, PipScope: {_hasPipScope}, FOV: {_currentFOV}, WeaponFOV: {weaponFOV}, CameraFOV: {cameraFOV}");
+
             return true;
         }
 
         /// <summary>
         /// Updates scope magnification and adjusts FOV accordingly.
         /// </summary>
-        /// <param name="scatterMap">The scatter read map</param>
+        /// <param name="pipScopePtr">The pipScopePtr adress</param>
         /// <param name="pipScopePtr">Pointer to the pip scope</param>
         /// <param name="weaponFOV">Base weapon FOV</param>
-        private void UpdateScopeMagnification(ScatterReadMap scatterMap, ulong pipScopePtr, float weaponFOV)
+        private void UpdateScopeMagnification(ulong pipScopePtr, float weaponFOV, ref float fov)
         {
-            var round3 = scatterMap.AddRound();
-            round3.AddEntry<int>(0, 6, pipScopePtr + Offsets.USQPipScopeCaptureComponent.CurrentMagnificationLevel);
-            scatterMap.Execute();
+            // Directly read the CurrentMagnificationLevel using ReadValue
+            int magnificationIdx = Memory.ReadValue<int>(pipScopePtr + Offsets.USQPipScopeCaptureComponent.CurrentMagnificationLevel);
 
-            _magnificationIndex = scatterMap.Results[0][6].TryGetResult<int>(out int idx) && idx >= 0 && idx < 3 ? idx : 0;
+            // Validate and assign the magnification index
+            _magnificationIndex = (magnificationIdx >= 0 && magnificationIdx < 3) ? magnificationIdx : 0;
 
+            // Determine magnification factor based on index
             float magnification = _magnificationIndex switch
             {
                 0 => 3f,  // x3
                 1 => 6f,  // x6
                 2 => 9f,  // x9
-                _ => 1f
+                _ => 1f   // Default (no magnification)
             };
 
             if (magnification > 1f)
             {
-                _currentFOV = weaponFOV / magnification;
+                fov = weaponFOV / magnification;
             }
         }
 

@@ -94,7 +94,7 @@ namespace squad_dma
                     }
 
                     RenderFrame();
-                    Thread.Sleep(16); // ~60 FPS
+                    Thread.Sleep(13); // ~60 FPS
                     wasReadyLastFrame = true;
                 }
                 Program.Log("Render thread stopped.");
