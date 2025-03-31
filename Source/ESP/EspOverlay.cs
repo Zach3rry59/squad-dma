@@ -117,8 +117,7 @@ namespace squad_dma
             renderTarget.Clear(new RawColor4(0, 0, 0, 0));
 
             Dictionary<ulong, UActor> actorsCopy;
-            lock (((Game)Game).actorsLock)
-            {
+
                 if (!IsReadyToRender())
                 {
                     renderTarget.EndDraw();
@@ -126,7 +125,6 @@ namespace squad_dma
                     return;
                 }
                 actorsCopy = new Dictionary<ulong, UActor>(Game.Actors);
-            }
 
             DrawEsp(actorsCopy);
             renderTarget.EndDraw();

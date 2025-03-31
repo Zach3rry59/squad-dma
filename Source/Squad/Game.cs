@@ -24,13 +24,12 @@ namespace squad_dma
         private DateTime _lastTeamCheck = DateTime.MinValue;
         private const int TeamCheckInterval = 1000;
 
-        // FOV
-        private ulong _localPlayersPtr;
+        //FOV
         private bool _isAimingDownSights;
         private bool _hasPipScope;
         private float _currentFOV;
         private int _magnificationIndex;
-        private int _updateCounter = 0; // trying to optimize
+
         public enum GameStatus
         {
             NotFound,
@@ -66,7 +65,6 @@ namespace squad_dma
         public bool IsAimingDownSights => _isAimingDownSights;
         public bool HasPipScope => _hasPipScope;
         public float CurrentFOV => _currentFOV;
-
         public Dictionary<int, int> TeamTickets
         {
             get => GetTickets();
@@ -81,8 +79,6 @@ namespace squad_dma
             _squadBase = squadBase;
         }
 
-        public readonly object actorsLock = new object();
-
         #region GameLoop
         /// <summary>
         /// Main Game Loop executed by Memory Worker Thread.
@@ -91,56 +87,17 @@ namespace squad_dma
         {
             try
             {
-                if (!Memory.GetModuleBase())
+                if (!this._inGame)
                 {
-                    lock (actorsLock)
-                    {
-                        this._inGame = false;
-                        //Program.Log("Game process not found, _inGame set to false.");
-                    }
-                    throw new GameEnded("Game process not found!");
+                    this._vehiclesLogged = false;
+                    throw new GameEnded("Game has ended!");
                 }
 
-                lock (actorsLock)
-                {
-                    if (!this._inGame)
-                    {
-                        Program.Log("Checking game state...");
-                        bool hasWorld = GetGameWorld();
-                        Program.Log($"GetGameWorld: {hasWorld}");
-                        if (!hasWorld) throw new Exception("GetGameWorld failed");
-                        bool hasInstance = GetGameInstance();
-                        Program.Log($"GetGameInstance: {hasInstance}");
-                        if (!hasInstance) throw new Exception("GetGameInstance failed");
-                        bool hasLevel = GetCurrentLevel();
-                        Program.Log($"GetCurrentLevel: {hasLevel}");
-                        if (!hasLevel) throw new Exception("GetCurrentLevel failed");
-                        bool hasActors = InitActors();
-                        Program.Log($"InitActors: {hasActors}");
-                        if (!hasActors) throw new Exception("InitActors failed");
-                        bool hasLocalPlayer = GetLocalPlayer();
-                        Program.Log($"GetLocalPlayer: {hasLocalPlayer}");
-                        if (!hasLocalPlayer) throw new Exception("GetLocalPlayer failed");
+                UpdateLocalPlayerInfo();
+                this._actors.UpdateList();
+                this._actors.UpdateAllPlayers();
 
-                        if (hasWorld && hasInstance && hasLevel && hasActors && hasLocalPlayer)
-                        {
-                            this._inGame = true;
-                            Memory.GameStatus = Game.GameStatus.InGame;
-                            //Program.Log("Game detected, _inGame set to true!");
-                        }
-                        else
-                        {
-                            this._vehiclesLogged = false;
-                            throw new GameEnded("Game has not yet started!");
-                        }
-                    }
-
-                    UpdateLocalPlayerInfo();
-                    this._actors.UpdateList();
-                    this._actors.UpdateAllPlayers();
-                }
-
-               // LogTeamInfo();
+                // LogTeamInfo();
 
             }
             catch (DMAShutdown)
@@ -153,7 +110,6 @@ namespace squad_dma
             }
             catch (Exception ex)
             {
-                Program.Log($"GameLoop failed: {ex.Message}");
                 HandleUnexpectedException(ex);
             }
         }
@@ -177,6 +133,7 @@ namespace squad_dma
         private void HandleGameEnded(GameEnded e)
         {
             Program.Log("Game has ended!");
+
             this._inGame = false;
             Memory.GameStatus = Game.GameStatus.Menu;
             Memory.Restart();
@@ -293,9 +250,7 @@ namespace squad_dma
             {
                 var persistentLevel = Memory.ReadPtr(_gameWorld + Offsets.World.PersistentLevel);
                 // Program.Log($"Found PersistentLevel at 0x{persistentLevel:X}");
-                
-                    _actors = new RegistredActors(persistentLevel);
-                
+                _actors = new RegistredActors(persistentLevel);
                 return true;
             }
             catch { return false; }
@@ -307,38 +262,31 @@ namespace squad_dma
         {
             try
             {
-                _playerController = Memory.ReadPtr(_localPlayer + Offsets.UPlayer.PlayerController);
+                var localPlayers = Memory.ReadPtr(_gameInstance + Offsets.GameInstance.LocalPlayers);
+                _localPlayer = Memory.ReadPtr(localPlayers);
+                // Program.Log($"Found LocalPlayer at 0x{_localPlayer:X}");
+                _localUPlayer = new UActor(_localPlayer);
+                _localUPlayer.Team = Team.Unknown;
+                GetPlayerController();
                 return true;
             }
             catch { return false; }
         }
-        /*
-        /// <summary>
-        /// Determines if a full update should be performed based on the update counter.
-        /// </summary>
-        private bool ShouldPerformFullUpdate()
-        {
-            _updateCounter++;
-            return _updateCounter % 20 == 0;
-        }
 
         /// <summary>
-        /// Resets the update counter to zero.
+        /// Gets PlayerController
         /// </summary>
-        private void ResetUpdateCounter()
+        private bool GetPlayerController()
         {
-            _updateCounter = 0;
-        }
-
-        */
-        /// <summary>
-        /// Resets player state variables to their default values.
-        /// </summary>
-        private void ResetPlayerStateToDefault()
-        {
-            _isAimingDownSights = false;
-            _hasPipScope = false;
-            _currentFOV = 90f;
+            try
+            {
+                _playerController = Memory.ReadPtr(_localPlayer + Offsets.UPlayer.PlayerController);
+                var playerState = Memory.ReadPtr(_playerController + Offsets.Controller.PlayerState);
+                _localUPlayer.TeamID = Memory.ReadValue<int>(playerState + Offsets.ASQPlayerState.TeamID);
+                // Program.Log($"Found PlayerController at 0x{_playerController:X}");
+                return true;
+            }
+            catch { return false; }
         }
 
         /// <summary>
@@ -480,6 +428,15 @@ namespace squad_dma
             }
         }
 
+        /// <summary>
+        /// Resets player state variables to their default values.
+        /// </summary>
+        private void ResetPlayerStateToDefault()
+        {
+            _isAimingDownSights = false;
+            _hasPipScope = false;
+            _currentFOV = 90f;
+        }
         private bool UpdateLocalPlayerInfo()
         {
             try
@@ -507,7 +464,7 @@ namespace squad_dma
                     }
                     catch { return false; }
                 }
-
+                ProcessPlayerInfo();
                 GetCameraCache();
                 return true;
             }
@@ -590,7 +547,7 @@ namespace squad_dma
             var teamTickets = new Dictionary<int, int>();
 
             try
-            { 
+            {
 
                 ulong gameState = Memory.ReadPtr(_gameWorld + Offsets.World.GameState);
                 if (gameState == 0)
@@ -716,6 +673,7 @@ namespace squad_dma
 
     }
     #endregion
+
 
     #region Exceptions
     public class GameNotRunningException : Exception
