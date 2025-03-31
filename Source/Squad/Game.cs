@@ -1,4 +1,6 @@
-﻿using System.Collections.ObjectModel;
+﻿using Offsets;
+using System;
+using System.Collections.ObjectModel;
 using System.Numerics;
 
 namespace squad_dma
@@ -19,6 +21,8 @@ namespace squad_dma
         private Vector3 _absoluteLocation;
         private string _currentLevel = string.Empty;
         private bool _vehiclesLogged = false;
+        private DateTime _lastTeamCheck = DateTime.MinValue;
+        private const int TeamCheckInterval = 1000;
 
         // FOV
         private ulong _localPlayersPtr;
@@ -63,6 +67,10 @@ namespace squad_dma
         public bool HasPipScope => _hasPipScope;
         public float CurrentFOV => _currentFOV;
 
+        public Dictionary<int, int> TeamTickets
+        {
+            get => GetTickets();
+        }
         #endregion
 
         /// <summary>
@@ -169,14 +177,7 @@ namespace squad_dma
         private void HandleGameEnded(GameEnded e)
         {
             Program.Log("Game has ended!");
-            lock (actorsLock)
-            {
-                this._inGame = false;
-                if (_actors != null)
-                {
-                    _actors._actors.Clear();
-                }
-            }
+            this._inGame = false;
             Memory.GameStatus = Game.GameStatus.Menu;
             Memory.Restart();
         }
@@ -306,37 +307,11 @@ namespace squad_dma
         {
             try
             {
-                _localPlayersPtr = Memory.ReadPtr(_gameInstance + Offsets.GameInstance.LocalPlayers);
-                _localPlayer = Memory.ReadPtr(_localPlayersPtr);
-                // Program.Log($"Found LocalPlayer at 0x{_localPlayer:X}");
-                _localUPlayer = new UActor(_localPlayer);
-                _localUPlayer.Team = Team.Unknown;
-                GetPlayerController();
+                _playerController = Memory.ReadPtr(_localPlayer + Offsets.UPlayer.PlayerController);
                 return true;
             }
             catch { return false; }
-
         }
-        /// <summary>
-        /// Updates local player information such as aiming state, scope status, and field of view.
-        /// </summary>
-        /// <returns>True if update succeeds, false otherwise</returns>
-        private bool UpdateLocalPlayerInfo()
-        {
-            try
-            {
-                GetCameraCache();
-
-                return ProcessPlayerInfo();
-            }
-            catch (Exception ex)
-            {
-                Program.Log($"Error in UpdateLocalPlayerInfo: {ex.Message}");
-                ResetPlayerStateToDefault();
-                return false;
-            }
-        }
-
         /*
         /// <summary>
         /// Determines if a full update should be performed based on the update counter.
@@ -505,20 +480,41 @@ namespace squad_dma
             }
         }
 
-        /// <summary>
-        /// Gets PlayerController
-        /// </summary>
-        private bool GetPlayerController()
+        private bool UpdateLocalPlayerInfo()
         {
             try
             {
-                _playerController = Memory.ReadPtr(_localPlayer + Offsets.UPlayer.PlayerController);
-                var playerState = Memory.ReadPtr(_playerController + Offsets.Controller.PlayerState);
-                _localUPlayer.TeamID = Memory.ReadValue<int>(playerState + Offsets.ASQPlayerState.TeamID);
-                // Program.Log($"Found PlayerController at 0x{_playerController:X}");
+                if ((DateTime.Now - _lastTeamCheck).TotalMilliseconds > TeamCheckInterval)
+                {
+                    _lastTeamCheck = DateTime.Now;
+
+                    try
+                    {
+                        ulong playerState = Memory.ReadPtr(_playerController + Offsets.Controller.PlayerState);
+                        ulong squadState = Memory.ReadPtr(_playerController + Offsets.PlayerController.SquadState);
+
+                        if (playerState == 0 || squadState == 0)
+                            return false;
+
+                        int teamId = Memory.ReadValue<int>(playerState + Offsets.ASQPlayerState.TeamID);
+                        int squadId = Memory.ReadValue<int>(squadState + Offsets.ASQSquadState.SquadId);
+
+                        if (_localUPlayer.TeamID != teamId || _localUPlayer.SquadID != squadId)
+                        {
+                            _localUPlayer.TeamID = teamId;
+                            _localUPlayer.SquadID = squadId;
+                        }
+                    }
+                    catch { return false; }
+                }
+
+                GetCameraCache();
                 return true;
             }
-            catch { return false; }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -588,6 +584,117 @@ namespace squad_dma
                 Program.Log("No entries found.");
             }
         }
+
+        public Dictionary<int, int> GetTickets()
+        {
+            var teamTickets = new Dictionary<int, int>();
+
+            try
+            { 
+
+                ulong gameState = Memory.ReadPtr(_gameWorld + Offsets.World.GameState);
+                if (gameState == 0)
+                    return teamTickets;
+
+                var scatterMap = new ScatterReadMap(1);
+                var round = scatterMap.AddRound();
+
+                round.AddEntry<ulong>(0, 0, gameState + Offsets.ASQGameState.TeamStates); // TeamStates array ptr
+                round.AddEntry<int>(0, 1, gameState + Offsets.ASQGameState.TeamStates + 0x8); // TeamCount
+
+                scatterMap.Execute();
+
+                if (!scatterMap.Results[0][0].TryGetResult<ulong>(out var teamStatesArray) || teamStatesArray == 0)
+                    return teamTickets;
+                if (!scatterMap.Results[0][1].TryGetResult<int>(out var teamCount) || teamCount < 2)
+                    return teamTickets;
+
+                var teamScatter = new ScatterReadMap(2);
+                var teamRound = teamScatter.AddRound();
+
+                teamRound.AddEntry<ulong>(0, 0, teamStatesArray); // Team1
+                teamRound.AddEntry<ulong>(1, 1, teamStatesArray + 0x8); // Team2
+
+                teamScatter.Execute();
+
+                if (teamScatter.Results[0][0].TryGetResult<ulong>(out var team1) && team1 != 0)
+                {
+                    int team1Id = Memory.ReadValue<int>(team1 + Offsets.ASQTeamState.ID);
+                    int team1Tickets = Memory.ReadValue<int>(team1 + Offsets.ASQTeamState.Tickets);
+                    teamTickets[team1Id] = team1Tickets;
+                }
+
+                if (teamScatter.Results[1][1].TryGetResult<ulong>(out var team2) && team2 != 0)
+                {
+                    int team2Id = Memory.ReadValue<int>(team2 + Offsets.ASQTeamState.ID);
+                    int team2Tickets = Memory.ReadValue<int>(team2 + Offsets.ASQTeamState.Tickets);
+                    teamTickets[team2Id] = team2Tickets;
+                }
+            }
+            catch { /* Silently fail */ }
+
+            return teamTickets;
+        }
+
+        public (int FriendlyTickets, int EnemyTickets) GetTeamTickets()
+        {
+            var tickets = GetTickets();
+            int localTeamId = _localUPlayer?.TeamID ?? -1;
+
+            if (tickets.Count == 0 || localTeamId == -1)
+                return (0, 0);
+
+            int friendly = 0;
+            int enemy = 0;
+
+            foreach (var team in tickets)
+            {
+                if (team.Key == localTeamId)
+                    friendly = team.Value;
+                else
+                    enemy = team.Value;
+            }
+
+            return (friendly, enemy);
+        }
+
+        public (int Kills, int Woundeds) GetStats()
+        {
+            try
+            {
+                var ptrScatter = new ScatterReadMap(1);
+                var ptrRound = ptrScatter.AddRound();
+
+                ptrRound.AddEntry<ulong>(0, 0, _playerController + Offsets.Controller.PlayerState);
+                ptrScatter.Execute();
+
+                if (!ptrScatter.Results[0][0].TryGetResult<ulong>(out var playerState) || playerState == 0)
+                    return (0, 0);
+
+                var dataScatter = new ScatterReadMap(1);
+                var dataRound = dataScatter.AddRound();
+
+                var playerStateData = playerState + Offsets.ASQPlayerState.PlayerStateData;
+
+                dataRound.AddEntry<int>(0, 0, playerStateData + Offsets.FPlayerStateDataObject.NumKills);
+                dataRound.AddEntry<int>(0, 2, playerStateData + Offsets.FPlayerStateDataObject.NumWoundeds);
+
+                dataScatter.Execute();
+
+                if (!dataScatter.Results[0][0].TryGetResult<int>(out var kills) ||
+                    !dataScatter.Results[0][2].TryGetResult<int>(out var woundeds))
+                {
+                    return (0, 0);
+                }
+
+                return (kills, woundeds);
+            }
+            catch
+            {
+                return (0, 0);
+            }
+        }
+
         public void LogTeamInfo()
         {
             if (!_inGame) return;
