@@ -112,7 +112,7 @@ namespace squad_dma
             {
                 var count = this.ActorCount;
 
-                if (count < 1) // todo
+                if (count < 10)// todo
                     throw new GameEnded();
 
                 var initialActorScatterMap = new ScatterReadMap(count);
