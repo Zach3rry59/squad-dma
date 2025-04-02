@@ -23,9 +23,11 @@ namespace squad_dma
         private bool _vehiclesLogged = false;
         private DateTime _lastTeamCheck = DateTime.MinValue;
         private const int TeamCheckInterval = 1000;
+
+        //FOV & Recoil thing
+        private ulong _currentWeaponPtr = 0;
         private ulong _lastNoRecoilWeaponPtr = 0;
 
-        //FOV
         private bool _isAimingDownSights;
         private bool _hasPipScope;
         private float _currentFOV;
@@ -542,31 +544,16 @@ namespace squad_dma
         {
             try
             {
-                ulong soldierPtr = ReadPawnPointer();
-                if (soldierPtr == 0)
-                {
-                    _lastNoRecoilWeaponPtr = 0; // Reset on no pawn
-                    return;
-                }
-
-                ulong inventoryPtr = Memory.ReadPtr(soldierPtr + Offsets.ASQSoldier.InventoryComponent);
-                if (inventoryPtr == 0)
-                {
-                    _lastNoRecoilWeaponPtr = 0; // Reset on no inventory
-                    return;
-                }
-
-                ulong weaponPtr = Memory.ReadPtr(inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
-                if (weaponPtr == 0)
+                // Early exit if no weapon or weapon hasn't changed
+                if (_currentWeaponPtr == 0)
                 {
                     _lastNoRecoilWeaponPtr = 0; // Reset on no weapon
                     return;
                 }
 
-                // Check if weapon has changed or no-recoil hasn't been applied yet
-                if (weaponPtr == _lastNoRecoilWeaponPtr && _lastNoRecoilWeaponPtr != 0)
+                if (_currentWeaponPtr == _lastNoRecoilWeaponPtr && _lastNoRecoilWeaponPtr != 0)
                 {
-                    return; // No need to reapply if weapon hasn't changed
+                    return;
                 }
 
                 if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
@@ -578,8 +565,8 @@ namespace squad_dma
                 if (scatterEntries.Count > 0)
                 {
                     Memory.WriteScatter(scatterEntries);
-                    _lastNoRecoilWeaponPtr = weaponPtr; // Update last weapon pointer
-                    Program.Log($"No-recoil applied successfully for weapon at 0x{weaponPtr:X}.");
+                    _lastNoRecoilWeaponPtr = _currentWeaponPtr; // Update last weapon pointer
+                    Program.Log($"No-recoil applied successfully for weapon at 0x{_currentWeaponPtr:X}.");
                 }
             }
             catch (Exception ex)
@@ -616,14 +603,7 @@ namespace squad_dma
         // Applies no-spread and no-shake (active when firing)
         public void ApplyNoSpreadAndNoShake()
         {
-            ulong soldierPtr = ReadPawnPointer();
-            if (soldierPtr == 0) return;
-            ulong inventoryPtr = Memory.ReadPtr(soldierPtr + Offsets.ASQSoldier.InventoryComponent);
-            if (inventoryPtr == 0) return;
-            ulong weaponPtr = Memory.ReadPtr(inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
-            if (weaponPtr == 0) return;
-            bool isFiring = Memory.ReadValue<byte>(weaponPtr + Offsets.ASQWeapon.bFireInput) == 1;
-            if (!isFiring) return; // Only apply when firing
+            if (!_isFiring) return; // Only apply when firing, using class field
 
             try
             {
@@ -721,7 +701,7 @@ namespace squad_dma
             {
                 return new ScatterWriteDataEntry<float>(baseAddress + (ulong)floatEntry.Address, floatEntry.Data);
             }
-            return entry; // Fallback, though we only use float entries here
+            return entry;
         }
 
         private float ReadCameraFOV()
@@ -772,21 +752,24 @@ namespace squad_dma
         /// <returns>True if successful</returns>
         private bool UpdateWeaponInfo(ScatterReadMap scatterMap, ulong weaponPtr, float cameraFOV)
         {
+            _currentWeaponPtr = weaponPtr; // Update current weapon pointer
+
             var round2 = scatterMap.AddRound();
             round2.AddEntry<byte>(0, 1, weaponPtr + Offsets.ASQWeapon.bAimingDownSights);
             round2.AddEntry<ulong>(0, 2, weaponPtr + Offsets.ASQWeapon.CachedPipScope);
             round2.AddEntry<float>(0, 3, weaponPtr + Offsets.ASQWeapon.CurrentFOV);
-            round2.AddEntry<byte>(0, 4, weaponPtr + Offsets.ASQWeapon.bFireInput); // Add firing state read
+            round2.AddEntry<byte>(0, 4, weaponPtr + Offsets.ASQWeapon.bFireInput); // Already added previously
             scatterMap.Execute();
 
             _isAimingDownSights = scatterMap.Results[0][1].TryGetResult<byte>(out byte ads) && ads == 1;
             _hasPipScope = scatterMap.Results[0][2].TryGetResult<ulong>(out ulong pipScopePtr) && pipScopePtr != 0;
             float weaponFOV = scatterMap.Results[0][3].TryGetResult<float>(out float currFOV) && currFOV > 10f && currFOV < 180f ? currFOV : cameraFOV;
-            _isFiring = scatterMap.Results[0][4].TryGetResult<byte>(out byte firing) && firing == 1; // Update firing state
+            _isFiring = scatterMap.Results[0][4].TryGetResult<byte>(out byte firing) && firing == 1;
 
             float finalFOV = cameraFOV; // Default to camera FOV
             if (_isAimingDownSights)
             {
+                ApplyNoSway(); // Apply no-sway when aiming
                 finalFOV = weaponFOV; // Set to ADS FOV initially
                 if (_hasPipScope && pipScopePtr != 0)
                 {
@@ -797,7 +780,7 @@ namespace squad_dma
             // Assign the final FOV only once
             _currentFOV = finalFOV;
 
-            //Program.Log($"ADS: {_isAimingDownSights}, PipScope: {_hasPipScope}, Firing: {_isFiring}, FOV: {_currentFOV}, WeaponFOV: {weaponFOV}, CameraFOV: {cameraFOV}");
+            //Program.Log($"ADS: {_isAimingDownSights}, PipScope: {_hasPipScope}, Firing: {_isFiring}, WeaponPtr: 0x{_currentWeaponPtr:X}, FOV: {_currentFOV}, WeaponFOV: {weaponFOV}, CameraFOV: {cameraFOV}");
 
             return true;
         }
@@ -838,7 +821,10 @@ namespace squad_dma
         {
             _isAimingDownSights = false;
             _hasPipScope = false;
+            _isFiring = false;
             _currentFOV = 90f;
+            _currentWeaponPtr = 0;
+            _lastNoRecoilWeaponPtr = 0;
         }
         private bool UpdateLocalPlayerInfo()
         {
