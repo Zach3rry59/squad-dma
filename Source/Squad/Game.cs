@@ -102,10 +102,11 @@ namespace squad_dma
                 this._actors.UpdateList();
                 this._actors.UpdateAllPlayers();
                 // LogTeamInfo();
-
-                ApplyNoRecoil();           // Active once on weapon swap
-                ApplyNoSway();               // When aiming (checked inside method)
-                ApplyNoSpreadAndNoShake();   // When firing (checked inside method)
+                //ApplyNoSpread();
+                //ApplyNoRecoil();
+                ApplyNoRecoilNoSpread();
+                ApplyNoSway();    // When aiming (checked inside method)
+                ApplyNoShake();   // When firing (checked inside method)
             }
             catch (DMAShutdown)
             {
@@ -538,118 +539,6 @@ namespace squad_dma
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinStandDeviation, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinProneTransitionDeviation, 0f),
     };
-
-        // no-recoil
-        public void ApplyNoRecoil()
-        {
-            try
-            {
-                // Early exit if no weapon or weapon hasn't changed
-                if (_currentWeaponPtr == 0)
-                {
-                    _lastNoRecoilWeaponPtr = 0; // Reset on no weapon
-                    return;
-                }
-
-                if (_currentWeaponPtr == _lastNoRecoilWeaponPtr && _lastNoRecoilWeaponPtr != 0)
-                {
-                    return;
-                }
-
-                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
-
-                var scatterEntries = new List<IScatterWriteEntry>();
-                scatterEntries.AddRange(_noRecoilAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
-                scatterEntries.AddRange(_noRecoilWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
-
-                if (scatterEntries.Count > 0)
-                {
-                    Memory.WriteScatter(scatterEntries);
-                    _lastNoRecoilWeaponPtr = _currentWeaponPtr; // Update last weapon pointer
-                    Program.Log($"No-recoil applied successfully for weapon at 0x{_currentWeaponPtr:X}.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Program.Log($"Failed to apply no-recoil: {ex.Message}");
-            }
-        }
-
-        // Applies no-sway (active when aiming)
-        public void ApplyNoSway()
-        {
-            if (!_isAimingDownSights) return; // Only apply when ADS
-
-            try
-            {
-                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
-
-                var scatterEntries = new List<IScatterWriteEntry>();
-                scatterEntries.AddRange(_noSwayAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
-                scatterEntries.AddRange(_noSwayWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
-
-                if (scatterEntries.Count > 0)
-                {
-                    Memory.WriteScatter(scatterEntries);
-                    Program.Log("No-sway applied successfully.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Program.Log($"Failed to apply no-sway: {ex.Message}");
-            }
-        }
-
-        // Applies no-spread and no-shake (active when firing)
-        public void ApplyNoSpreadAndNoShake()
-        {
-            if (!_isFiring) return; // Only apply when firing, using class field
-
-            try
-            {
-                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
-
-                var scatterEntries = new List<IScatterWriteEntry>();
-                scatterEntries.AddRange(_noSpreadAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
-                scatterEntries.AddRange(_noSpreadWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
-
-                // Handle camera shake suppression
-                ulong cameraManagerPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.PlayerCameraManager);
-                if (cameraManagerPtr == 0) return;
-                ulong cameraShakeModPtr = Memory.ReadPtr(cameraManagerPtr + Offsets.Camera.CachedCameraShakeMod);
-                if (cameraShakeModPtr != 0)
-                {
-                    ulong activeShakesDataPtr = Memory.ReadPtr(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes);
-                    if (activeShakesDataPtr != 0)
-                    {
-                        int activeShakesCount = Memory.ReadValue<int>(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes + 0x8);
-                        if (activeShakesCount > 0)
-                        {
-                            const int shakeInfoSize = 0x18;
-                            for (int i = 0; i < activeShakesCount; i++)
-                            {
-                                ulong shakeBasePtr = Memory.ReadPtr(activeShakesDataPtr + (uint)(i * shakeInfoSize));
-                                if (shakeBasePtr != 0)
-                                {
-                                    scatterEntries.Add(new ScatterWriteDataEntry<float>(shakeBasePtr + Offsets.UCameraShakeBase.ShakeScale, 0f));
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (scatterEntries.Count > 0)
-                {
-                    Memory.WriteScatter(scatterEntries);
-                    Program.Log("No-spread and no-shake applied successfully.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Program.Log($"Failed to apply no-spread and no-shake: {ex.Message}");
-            }
-        }
-
         // Helper method to get common base pointers
         private bool GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)
         {
@@ -704,6 +593,171 @@ namespace squad_dma
             return entry;
         }
 
+        public void ApplyNoRecoilNoSpread()
+        {
+            try
+            {
+                if (_currentWeaponPtr == 0)
+                {
+                    _lastNoRecoilWeaponPtr = 0;
+                    return;
+                }
+
+                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
+
+                var scatterEntries = new List<IScatterWriteEntry>();
+
+                // No-Recoil & NoSpread (apply once per weapon swap)
+                if (_currentWeaponPtr != _lastNoRecoilWeaponPtr || _lastNoRecoilWeaponPtr == 0)
+                {
+                    scatterEntries.AddRange(_noRecoilAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+                    scatterEntries.AddRange(_noRecoilWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+                    scatterEntries.AddRange(_noSpreadAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+                    scatterEntries.AddRange(_noSpreadWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+                    _lastNoRecoilWeaponPtr = _currentWeaponPtr;
+                    Program.Log($"No-spread & No-recoil applied for weapon 0x{_currentWeaponPtr:X}");
+                }
+
+                if (scatterEntries.Count > 0)
+                {
+                    Memory.WriteScatter(scatterEntries);
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Failed to apply no-recoil/no-spread: {ex.Message}");
+            }
+        }
+        // no-recoil
+        public void ApplyNoRecoil()
+        {
+            try
+            {
+                if (_currentWeaponPtr == 0)
+                {
+                    _lastNoRecoilWeaponPtr = 0;
+                    return;
+                }
+
+                if (_currentWeaponPtr == _lastNoRecoilWeaponPtr && _lastNoRecoilWeaponPtr != 0)
+                {
+                    return;
+                }
+
+                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
+
+                var scatterEntries = new List<IScatterWriteEntry>();
+                scatterEntries.AddRange(_noRecoilAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+                scatterEntries.AddRange(_noRecoilWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+
+                if (scatterEntries.Count > 0)
+                {
+                    Memory.WriteScatter(scatterEntries);
+                    _lastNoRecoilWeaponPtr = _currentWeaponPtr; // Update last weapon pointer
+                    Program.Log($"No-recoil applied successfully for weapon at 0x{_currentWeaponPtr:X}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Failed to apply no-recoil: {ex.Message}");
+            }
+        }
+
+        // Applies no-sway (active when aiming)
+        public void ApplyNoSway()
+        {
+            if (!_isAimingDownSights) return; // Only apply when ADS
+
+            try
+            {
+                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
+
+                var scatterEntries = new List<IScatterWriteEntry>();
+                scatterEntries.AddRange(_noSwayAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+                scatterEntries.AddRange(_noSwayWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+
+                if (scatterEntries.Count > 0)
+                {
+                    Memory.WriteScatter(scatterEntries);
+                    Program.Log("No-sway applied successfully.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Failed to apply no-sway: {ex.Message}");
+            }
+        }
+
+        // no-spread
+        public void ApplyNoSpread()
+        {
+            //if (!_isFiring) return; // Uncomment to only apply when firing
+
+            try
+            {
+                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
+
+                var scatterEntries = new List<IScatterWriteEntry>();
+                scatterEntries.AddRange(_noSpreadAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+                scatterEntries.AddRange(_noSpreadWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+
+                if (scatterEntries.Count > 0)
+                {
+                    Memory.WriteScatter(scatterEntries);
+                    Program.Log("No-spread applied successfully.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Failed to apply no-spread: {ex.Message}");
+            }
+        }
+
+        // no-shake
+        public void ApplyNoShake()
+        {
+            if (!_isFiring) return; // Only apply when firing
+
+            try
+            {
+                var scatterEntries = new List<IScatterWriteEntry>();
+
+                // Handle camera shake suppression
+                ulong cameraManagerPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.PlayerCameraManager);
+                if (cameraManagerPtr == 0) return;
+                ulong cameraShakeModPtr = Memory.ReadPtr(cameraManagerPtr + Offsets.Camera.CachedCameraShakeMod);
+                if (cameraShakeModPtr != 0)
+                {
+                    ulong activeShakesDataPtr = Memory.ReadPtr(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes);
+                    if (activeShakesDataPtr != 0)
+                    {
+                        int activeShakesCount = Memory.ReadValue<int>(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes + 0x8);
+                        if (activeShakesCount > 0)
+                        {
+                            const int shakeInfoSize = 0x18;
+                            for (int i = 0; i < activeShakesCount; i++)
+                            {
+                                ulong shakeBasePtr = Memory.ReadPtr(activeShakesDataPtr + (uint)(i * shakeInfoSize));
+                                if (shakeBasePtr != 0)
+                                {
+                                    scatterEntries.Add(new ScatterWriteDataEntry<float>(shakeBasePtr + Offsets.UCameraShakeBase.ShakeScale, 0f));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (scatterEntries.Count > 0)
+                {
+                    Memory.WriteScatter(scatterEntries);
+                    Program.Log("No-shake applied successfully.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Failed to apply no-shake: {ex.Message}");
+            }
+        }
         private float ReadCameraFOV()
         {
             ulong cameraManagerPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.PlayerCameraManager);
@@ -769,7 +823,6 @@ namespace squad_dma
             float finalFOV = cameraFOV; // Default to camera FOV
             if (_isAimingDownSights)
             {
-                ApplyNoSway(); // Apply no-sway when aiming
                 finalFOV = weaponFOV; // Set to ADS FOV initially
                 if (_hasPipScope && pipScopePtr != 0)
                 {
