@@ -141,9 +141,9 @@ namespace squad_dma
             EnableEsp = true;
             EspBones = true;
             EspShowAllies = false;
-            FirstScopeMagnification = 3.0f;  // e.g., 4x scope
-            SecondScopeMagnification = 5.0f; // e.g., 6x scope
-            ThirdScopeMagnification = 11.0f;  // e.g., 12x scope
+            FirstScopeMagnification = 4.0f;  // e.g., 4x scope
+            SecondScopeMagnification = 6.0f; // e.g., 6x scope
+            ThirdScopeMagnification = 12.0f;  // e.g., 12x scope
 
             // Writes
 

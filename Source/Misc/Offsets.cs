@@ -147,6 +147,8 @@
         public const uint InventoryComponent = 0x2108; // USQPawnInventoryComponent*
         public const uint CachedAnimInstance1p = 0x2260; // USQAnimInstanceSoldier1P*
         public const uint Mesh = 0x288; // USkeletalMeshComponent*
+
+        public const uint WeaponBasedFOV = 0x288; // Float
     }
     public struct USQAnimInstanceSoldier1P
     {

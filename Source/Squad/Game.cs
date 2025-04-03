@@ -822,7 +822,7 @@ namespace squad_dma
 
             _isAimingDownSights = scatterMap.Results[0][1].TryGetResult<byte>(out byte ads) && ads == 1;
             _hasPipScope = scatterMap.Results[0][2].TryGetResult<ulong>(out ulong pipScopePtr) && pipScopePtr != 0;
-            float weaponFOV = scatterMap.Results[0][3].TryGetResult<float>(out float currFOV) && currFOV > 10f && currFOV < 180f ? currFOV : cameraFOV;
+            float weaponFOV = scatterMap.Results[0][3].TryGetResult<float>(out float currFOV) && currFOV > 5f && currFOV < 180f ? currFOV : cameraFOV;
             _isFiring = scatterMap.Results[0][4].TryGetResult<byte>(out byte firing) && firing == 1;
 
             float finalFOV = cameraFOV; // Default to camera FOV
@@ -868,10 +868,18 @@ namespace squad_dma
 
             if (magnification > 1f)
             {
-                fov = weaponFOV / magnification;
+                fov = GetZoomedFOV(magnification, weaponFOV);
             }
         }
 
+        //Zoomed FOV Calculation :
+
+        float GetZoomedFOV(float MagnificationDesired, float DefaultFOV)
+        {
+            float defaultFOVRad = DefaultFOV * 0.00872664626f; // Conversion degrés -> radians (π / 360)
+            float zoomedHalfFOVRad = (float)Math.Atan(Math.Tan(defaultFOVRad) / MagnificationDesired);
+            return 2.0f * zoomedHalfFOVRad * 57.295779513f; // Conversion radians -> degrés (180 / π)
+        }
         /// <summary>
         /// Resets player state variables to their default values.
         /// </summary>
@@ -901,7 +909,7 @@ namespace squad_dma
                             return false;
 
                         int teamId = Memory.ReadValue<int>(playerState + Offsets.ASQPlayerState.TeamID);
-                        int squadId = Memory.ReadValue<int>(squadState + Offsets.ASQSquadState.SquadId);
+                        int squadId = Memory.ReadValue<int>(playerState + Offsets.ASQSquadState.SquadId);
 
                         if (_localUPlayer.TeamID != teamId || _localUPlayer.SquadID != squadId)
                         {
