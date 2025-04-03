@@ -71,6 +71,16 @@ namespace squad_dma
         [JsonPropertyName("espShowAllies")]
         public bool EspShowAllies { get; set; }
 
+        // ESP Scope Magnifications
+        [JsonPropertyName("firstScopeMagnification")]
+        public float FirstScopeMagnification { get; set; }
+
+        [JsonPropertyName("secondScopeMagnification")]
+        public float SecondScopeMagnification { get; set; }
+
+        [JsonPropertyName("thirdScopeMagnification")]
+        public float ThirdScopeMagnification { get; set; }
+
         // Writes :
 
         [JsonPropertyName("noRecoil")]
@@ -131,6 +141,9 @@ namespace squad_dma
             EnableEsp = true;
             EspBones = true;
             EspShowAllies = false;
+            FirstScopeMagnification = 3.0f;  // e.g., 4x scope
+            SecondScopeMagnification = 5.0f; // e.g., 6x scope
+            ThirdScopeMagnification = 11.0f;  // e.g., 12x scope
 
             // Writes
 

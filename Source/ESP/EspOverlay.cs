@@ -235,7 +235,12 @@ namespace squad_dma
                 return;
             }
 
-            brush.Color = new RawColor4(1.0f, 1.0f, 1.0f, 1.0f);
+            brush.Color = brush.Color = new RawColor4(
+                    Program.Config.EspTextColor.R / 255f,
+                    Program.Config.EspTextColor.G / 255f,
+                    Program.Config.EspTextColor.B / 255f,
+                    Program.Config.EspTextColor.A / 255f
+                );
             DrawBoneLines(actor.BoneScreenPositions);
         }
         private void DrawBoneLines(Vector2[] screenPositions)

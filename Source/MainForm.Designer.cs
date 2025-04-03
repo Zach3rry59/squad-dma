@@ -65,6 +65,12 @@ namespace squad_dma
             lblEspColorG = new Label();
             txtEspColorB = new TextBox();
             lblEspColorB = new Label();
+            lblFirstScopeMag = new Label();
+            txtFirstScopeMag = new TextBox();
+            lblSecondScopeMag = new Label();
+            txtSecondScopeMag = new TextBox();
+            lblThirdScopeMag = new Label();
+            txtThirdScopeMag = new TextBox();
             grpWriteSettings = new GroupBox();
             chkEnableNoRecoil = new CheckBox();
             chkEnableNoSway = new CheckBox();
@@ -283,9 +289,15 @@ namespace squad_dma
             grpEsp.Controls.Add(lblEspColorG);
             grpEsp.Controls.Add(txtEspColorB);
             grpEsp.Controls.Add(lblEspColorB);
+            grpEsp.Controls.Add(lblFirstScopeMag);
+            grpEsp.Controls.Add(txtFirstScopeMag);
+            grpEsp.Controls.Add(lblSecondScopeMag);
+            grpEsp.Controls.Add(txtSecondScopeMag);
+            grpEsp.Controls.Add(lblThirdScopeMag);
+            grpEsp.Controls.Add(txtThirdScopeMag);
             grpEsp.Location = new Point(5, 302);
             grpEsp.Name = "grpEsp";
-            grpEsp.Size = new Size(463, 254);
+            grpEsp.Size = new Size(463, 352);
             grpEsp.TabIndex = 27;
             grpEsp.TabStop = false;
             grpEsp.Text = "ESP";
@@ -380,7 +392,7 @@ namespace squad_dma
             // 
             // txtEspFontSize
             // 
-            txtEspFontSize.Location = new Point(110, 179);
+            txtEspFontSize.Location = new Point(76, 211);
             txtEspFontSize.Name = "txtEspFontSize";
             txtEspFontSize.Size = new Size(50, 23);
             txtEspFontSize.TabIndex = 7;
@@ -390,7 +402,7 @@ namespace squad_dma
             // lblEspFontSize
             // 
             lblEspFontSize.AutoSize = true;
-            lblEspFontSize.Location = new Point(10, 182);
+            lblEspFontSize.Location = new Point(6, 214);
             lblEspFontSize.Name = "lblEspFontSize";
             lblEspFontSize.Size = new Size(57, 15);
             lblEspFontSize.TabIndex = 8;
@@ -399,7 +411,7 @@ namespace squad_dma
             // 
             // txtEspColorA
             // 
-            txtEspColorA.Location = new Point(31, 213);
+            txtEspColorA.Location = new Point(30, 176);
             txtEspColorA.Name = "txtEspColorA";
             txtEspColorA.Size = new Size(40, 23);
             txtEspColorA.TabIndex = 9;
@@ -409,7 +421,7 @@ namespace squad_dma
             // lblEspColorA
             // 
             lblEspColorA.AutoSize = true;
-            lblEspColorA.Location = new Point(7, 216);
+            lblEspColorA.Location = new Point(6, 179);
             lblEspColorA.Name = "lblEspColorA";
             lblEspColorA.Size = new Size(18, 15);
             lblEspColorA.TabIndex = 10;
@@ -417,7 +429,7 @@ namespace squad_dma
             // 
             // txtEspColorR
             // 
-            txtEspColorR.Location = new Point(100, 213);
+            txtEspColorR.Location = new Point(99, 176);
             txtEspColorR.Name = "txtEspColorR";
             txtEspColorR.Size = new Size(40, 23);
             txtEspColorR.TabIndex = 11;
@@ -427,7 +439,7 @@ namespace squad_dma
             // lblEspColorR
             // 
             lblEspColorR.AutoSize = true;
-            lblEspColorR.Location = new Point(77, 216);
+            lblEspColorR.Location = new Point(76, 179);
             lblEspColorR.Name = "lblEspColorR";
             lblEspColorR.Size = new Size(17, 15);
             lblEspColorR.TabIndex = 12;
@@ -436,7 +448,7 @@ namespace squad_dma
             // 
             // txtEspColorG
             // 
-            txtEspColorG.Location = new Point(170, 213);
+            txtEspColorG.Location = new Point(169, 176);
             txtEspColorG.Name = "txtEspColorG";
             txtEspColorG.Size = new Size(40, 23);
             txtEspColorG.TabIndex = 13;
@@ -446,7 +458,7 @@ namespace squad_dma
             // lblEspColorG
             // 
             lblEspColorG.AutoSize = true;
-            lblEspColorG.Location = new Point(146, 216);
+            lblEspColorG.Location = new Point(145, 179);
             lblEspColorG.Name = "lblEspColorG";
             lblEspColorG.Size = new Size(18, 15);
             lblEspColorG.TabIndex = 14;
@@ -454,7 +466,7 @@ namespace squad_dma
             // 
             // txtEspColorB
             // 
-            txtEspColorB.Location = new Point(239, 213);
+            txtEspColorB.Location = new Point(238, 176);
             txtEspColorB.Name = "txtEspColorB";
             txtEspColorB.Size = new Size(40, 23);
             txtEspColorB.TabIndex = 15;
@@ -464,11 +476,65 @@ namespace squad_dma
             // lblEspColorB
             // 
             lblEspColorB.AutoSize = true;
-            lblEspColorB.Location = new Point(216, 216);
+            lblEspColorB.Location = new Point(215, 179);
             lblEspColorB.Name = "lblEspColorB";
             lblEspColorB.Size = new Size(17, 15);
             lblEspColorB.TabIndex = 16;
             lblEspColorB.Text = "B:";
+            // 
+            // lblFirstScopeMag
+            // 
+            lblFirstScopeMag.AutoSize = true;
+            lblFirstScopeMag.Location = new Point(4, 254);
+            lblFirstScopeMag.Name = "lblFirstScopeMag";
+            lblFirstScopeMag.Size = new Size(87, 15);
+            lblFirstScopeMag.TabIndex = 17;
+            lblFirstScopeMag.Text = "1st Scope Mag:";
+            // 
+            // txtFirstScopeMag
+            // 
+            txtFirstScopeMag.Location = new Point(114, 251);
+            txtFirstScopeMag.Name = "txtFirstScopeMag";
+            txtFirstScopeMag.Size = new Size(50, 23);
+            txtFirstScopeMag.TabIndex = 18;
+            txtFirstScopeMag.Text = "1.0";
+            txtFirstScopeMag.TextChanged += TxtFirstScopeMag_TextChanged;
+            // 
+            // lblSecondScopeMag
+            // 
+            lblSecondScopeMag.AutoSize = true;
+            lblSecondScopeMag.Location = new Point(4, 284);
+            lblSecondScopeMag.Name = "lblSecondScopeMag";
+            lblSecondScopeMag.Size = new Size(92, 15);
+            lblSecondScopeMag.TabIndex = 19;
+            lblSecondScopeMag.Text = "2nd Scope Mag:";
+            // 
+            // txtSecondScopeMag
+            // 
+            txtSecondScopeMag.Location = new Point(114, 281);
+            txtSecondScopeMag.Name = "txtSecondScopeMag";
+            txtSecondScopeMag.Size = new Size(50, 23);
+            txtSecondScopeMag.TabIndex = 20;
+            txtSecondScopeMag.Text = "2.0";
+            txtSecondScopeMag.TextChanged += TxtSecondScopeMag_TextChanged;
+            // 
+            // lblThirdScopeMag
+            // 
+            lblThirdScopeMag.AutoSize = true;
+            lblThirdScopeMag.Location = new Point(4, 314);
+            lblThirdScopeMag.Name = "lblThirdScopeMag";
+            lblThirdScopeMag.Size = new Size(89, 15);
+            lblThirdScopeMag.TabIndex = 21;
+            lblThirdScopeMag.Text = "3rd Scope Mag:";
+            // 
+            // txtThirdScopeMag
+            // 
+            txtThirdScopeMag.Location = new Point(114, 311);
+            txtThirdScopeMag.Name = "txtThirdScopeMag";
+            txtThirdScopeMag.Size = new Size(50, 23);
+            txtThirdScopeMag.TabIndex = 22;
+            txtThirdScopeMag.Text = "4.0";
+            txtThirdScopeMag.TextChanged += TxtThirdScopeMag_TextChanged;
             // 
             // grpWriteSettings
             // 
@@ -715,6 +781,12 @@ namespace squad_dma
         private Label lblEspColorR;
         private Label lblEspColorG;
         private Label lblEspColorB;
+        private TextBox txtFirstScopeMag;
+        private Label lblFirstScopeMag;
+        private TextBox txtSecondScopeMag;
+        private Label lblSecondScopeMag;
+        private TextBox txtThirdScopeMag;
+        private Label lblThirdScopeMag;
 
         // Write Settings (NoRecoil, NoSway, NoCameraShake)
         private GroupBox grpWriteSettings;

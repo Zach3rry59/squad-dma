@@ -351,6 +351,9 @@ namespace squad_dma
             txtEspColorR.Text = _config.EspTextColor.R.ToString();
             txtEspColorG.Text = _config.EspTextColor.G.ToString();
             txtEspColorB.Text = _config.EspTextColor.B.ToString();
+            txtFirstScopeMag.Text = (_config.FirstScopeMagnification == 1.0f ? _config.FirstScopeMagnification : _config.FirstScopeMagnification + 1).ToString("F1");
+            txtSecondScopeMag.Text = (_config.SecondScopeMagnification == 1.0f ? _config.SecondScopeMagnification : _config.SecondScopeMagnification + 1).ToString("F1");
+            txtThirdScopeMag.Text = (_config.ThirdScopeMagnification == 1.0f ? _config.ThirdScopeMagnification : _config.ThirdScopeMagnification + 1).ToString("F1");
 
             // Write 
             grpWriteSettings.Visible = true;
@@ -1616,7 +1619,9 @@ namespace squad_dma
                 _espOverlay.Close();
                 _espOverlay = null;
             }
+            Thread.Sleep(1000);
             Memory.Restart();
+            Thread.Sleep(1000);
             if (_config.EnableEsp)
             {
                 _espOverlay = new EspOverlay();
@@ -1819,6 +1824,68 @@ namespace squad_dma
             else
             {
                 txtEspColorB.Text = _config.EspTextColor.B.ToString();
+            }
+        }
+        private void TxtFirstScopeMag_TextChanged(object sender, EventArgs e)
+        {
+            if (float.TryParse(txtFirstScopeMag.Text, out float mag) && mag >= 0)
+            {
+                float adjustedMag = (mag == 1.0f) ? 1.0f : mag - 1;
+                if (adjustedMag >= 0)
+                {
+                    _config.FirstScopeMagnification = adjustedMag;
+                    Config.SaveConfig(_config);
+                }
+                else
+                {
+                    txtFirstScopeMag.Text = (_config.FirstScopeMagnification == 1.0f ? _config.FirstScopeMagnification : _config.FirstScopeMagnification + 1).ToString("F1");
+                }
+            }
+            else
+            {
+                txtFirstScopeMag.Text = (_config.FirstScopeMagnification == 1.0f ? _config.FirstScopeMagnification : _config.FirstScopeMagnification + 1).ToString("F1");
+            }
+        }
+
+        private void TxtSecondScopeMag_TextChanged(object sender, EventArgs e)
+        {
+            if (float.TryParse(txtSecondScopeMag.Text, out float mag) && mag >= 0)
+            {
+                float adjustedMag = (mag == 1.0f) ? 1.0f : mag - 1; 
+                if (adjustedMag >= 0)
+                {
+                    _config.SecondScopeMagnification = adjustedMag;
+                    Config.SaveConfig(_config);
+                }
+                else
+                {
+                    txtSecondScopeMag.Text = (_config.SecondScopeMagnification == 1.0f ? _config.SecondScopeMagnification : _config.SecondScopeMagnification + 1).ToString("F1");
+                }
+            }
+            else
+            {
+                txtSecondScopeMag.Text = (_config.SecondScopeMagnification == 1.0f ? _config.SecondScopeMagnification : _config.SecondScopeMagnification + 1).ToString("F1");
+            }
+        }
+
+        private void TxtThirdScopeMag_TextChanged(object sender, EventArgs e)
+        {
+            if (float.TryParse(txtThirdScopeMag.Text, out float mag) && mag >= 0)
+            {
+                float adjustedMag = (mag == 1.0f) ? 1.0f : mag - 1;
+                if (adjustedMag >= 0)
+                {
+                    _config.ThirdScopeMagnification = adjustedMag;
+                    Config.SaveConfig(_config);
+                }
+                else
+                {
+                    txtThirdScopeMag.Text = (_config.ThirdScopeMagnification == 1.0f ? _config.ThirdScopeMagnification : _config.ThirdScopeMagnification + 1).ToString("F1");
+                }
+            }
+            else
+            {
+                txtThirdScopeMag.Text = (_config.ThirdScopeMagnification == 1.0f ? _config.ThirdScopeMagnification : _config.ThirdScopeMagnification + 1).ToString("F1");
             }
         }
         #endregion

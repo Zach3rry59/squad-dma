@@ -860,10 +860,10 @@ namespace squad_dma
             // Determine magnification factor based on index
             float magnification = _magnificationIndex switch
             {
-                0 => 3f,  // x3
-                1 => 6f,  // x6
-                2 => 9f,  // x9
-                _ => 1f   // Default (no magnification)
+                0 => Program.Config.FirstScopeMagnification,  // 1st scope Magnification
+                1 => Program.Config.SecondScopeMagnification, // 2nd scope Magnification
+                2 => Program.Config.ThirdScopeMagnification,  // 3rd scope Magnification
+                _ => 1f                               // Default (no magnification)
             };
 
             if (magnification > 1f)
