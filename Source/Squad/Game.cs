@@ -909,7 +909,7 @@ namespace squad_dma
                             return false;
 
                         int teamId = Memory.ReadValue<int>(playerState + Offsets.ASQPlayerState.TeamID);
-                        int squadId = Memory.ReadValue<int>(playerState + Offsets.ASQSquadState.SquadId);
+                        int squadId = Memory.ReadValue<int>(squadState + Offsets.ASQSquadState.SquadId);
 
                         if (_localUPlayer.TeamID != teamId || _localUPlayer.SquadID != squadId)
                         {
