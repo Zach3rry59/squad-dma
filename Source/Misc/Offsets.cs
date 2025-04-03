@@ -6,44 +6,6 @@
         public const uint GNames = 0x71daac0;
         public const uint GWorld = 0x7357e80;
     }
-
-    public struct FVector
-    {
-        public float X;
-        public float Y;
-        public float Z;
-
-        public FVector(float x, float y, float z)
-        {
-            X = x;
-            Y = y;
-            Z = z;
-        }
-
-        public override string ToString()
-        {
-            return $"({X}, {Y}, {Z})";
-        }
-    }
-
-    public struct FRotator
-    {
-        public float Pitch;
-        public float Yaw;
-        public float Roll;
-
-        public FRotator(float pitch, float yaw, float roll)
-        {
-            Pitch = pitch;
-            Yaw = yaw;
-            Roll = roll;
-        }
-
-        public override string ToString()
-        {
-            return $"(Pitch: {Pitch}, Yaw: {Yaw}, Roll: {Roll})";
-        }
-    }
     public struct World
     {
         public const uint PersistentLevel = 0x30;
@@ -81,7 +43,7 @@
     {
         public const uint RelativeLocation = 0x11C;
         public const uint RelativeRotation = 0x128;
-        public const uint ComponentToWorld = 0x11C; // Relative Offset Guess
+        public const uint ComponentToWorld = 0x14C; // Relative Offset Guess
         public const uint RelativeScale3D = 0x134;
         public const uint RelativeLocationComp2World = 0x1D0;
     }
@@ -102,7 +64,7 @@
         public const uint Controller = 0x260;
     }
 
-    public struct MeshComponent
+    public struct MeshComponent // UskeletalMeshComponent
     {
         public const uint CachedBoneSpaceTransforms = 0x0740;
     }
@@ -184,6 +146,7 @@
         public const uint Health = 0x1DF8;
         public const uint InventoryComponent = 0x2108; // USQPawnInventoryComponent*
         public const uint CachedAnimInstance1p = 0x2260; // USQAnimInstanceSoldier1P*
+        public const uint Mesh = 0x288; // USkeletalMeshComponent*
     }
     public struct USQAnimInstanceSoldier1P
     {
@@ -232,6 +195,9 @@
         public const uint MinStandAdsDeviation = 0x9c0; // float
         public const uint MinStandDeviation = 0x9c4; // float
         public const uint MinProneTransitionDeviation = 0x9c8; // float
+
+
+        public const uint FireShake = 0x948; // TSubclassOf<UCameraShakeBase*>
     }
 
     public struct USQWeaponStaticInfo
@@ -295,18 +261,13 @@
         public const uint CurrentFOV = 0x7e8; // float
         public const uint bFireInput = 0x6fd; // bool
         public const uint WeaponStaticInfo = 0x488; // USQWeaponStaticInfo*
+        public const uint CurrentState = 0x6e8; // ESQWeaponState
     }
     public struct FSQSwayData
     {
-        public const uint Aspect = 0x0; // FSQSwayAspect
-        public const uint DynamicGroup = 0xc; // FSQSwayDynamicGroup
-        public const uint StanceGroup = 0x2c; // FSQSwayStanceGroup
-        public const uint LocationOffsetMultiplier = 0x58; // float
-        public const uint Limits = 0x5c; // FSQSwayLimits
         public const uint UnclampedTotalSway = 0x74; // float
         public const uint TotalSway = 0x78; // float
         public const uint Sway = 0x7c; // FRotator
-        public const uint LocationOffset = 0x88; // FVector
     }
     public struct USQPipScopeCaptureComponent
     {

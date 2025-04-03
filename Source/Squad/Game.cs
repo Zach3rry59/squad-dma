@@ -104,9 +104,18 @@ namespace squad_dma
                 // LogTeamInfo();
                 //ApplyNoSpread();
                 //ApplyNoRecoil();
-                ApplyNoRecoilNoSpread();
-                ApplyNoSway();    // When aiming (checked inside method)
-                ApplyNoShake();   // When firing (checked inside method)
+                if (Program.Config.NoRecoil)
+                {
+                    ApplyNoRecoilNoSpread();
+                }
+                if (Program.Config.NoSway)
+                {
+                    ApplyNoSway();
+                }
+                if (Program.Config.NoCameraShake)
+                {
+                    ApplyNoCameraShake();
+                }
             }
             catch (DMAShutdown)
             {
@@ -446,48 +455,48 @@ namespace squad_dma
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunchSwayCombinedRotator + 4, 0f), // Yaw
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunchSwayCombinedRotator + 8, 0f), // Roll
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.UnclampedTotalSway, 0f),
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.TotalSway, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.Sway, 0f), // Pitch
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.Sway + 4, 0f), // Yaw
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.Sway + 8, 0f), // Roll
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffset, 0f), // X
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffset, 0f), // X
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.TotalSway, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.Sway, 0f), // Pitch
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.Sway + 4, 0f), // Yaw
         new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.Sway + 8, 0f), // Roll
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset, 0f), // X
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset, 0f), // X
+       // new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
+       // new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
     };
 
         private readonly List<IScatterWriteEntry> _noSwayWeaponEntries = new List<IScatterWriteEntry>
     {
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.AddMoveSway, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MaxMoveSwayFactor, 0f),
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
+       // new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.TotalSway, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.Sway, 0f), // Pitch
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.Sway + 4, 0f), // Yaw
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.Sway + 8, 0f), // Roll
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffset, 0f), // X
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffset, 0f), // X
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.TotalSway, 0f),
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.Sway, 0f), // Pitch
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.Sway + 4, 0f), // Yaw
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.Sway + 8, 0f), // Roll
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset, 0f), // X
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
-        new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset, 0f), // X
+       // new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
+        //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
     };
 
         private readonly List<IScatterWriteEntry> _noSpreadAnimEntries = new List<IScatterWriteEntry>
@@ -541,47 +550,24 @@ namespace squad_dma
     };
         // Helper method to get common base pointers
         private bool GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)
-        {
-            animInstancePtr = 0;
-            weaponStaticInfoPtr = 0;
+    {
+        animInstancePtr = 0;
+        weaponStaticInfoPtr = 0;
 
-            ulong soldierPtr = ReadPawnPointer();
-            if (soldierPtr == 0)
-            {
-                Program.Log("No soldier pawn found!");
-                return false;
-            }
+        ulong pawnPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
+        if (pawnPtr == 0) return false;
 
-            ulong inventoryPtr = Memory.ReadPtr(soldierPtr + Offsets.ASQSoldier.InventoryComponent);
-            if (inventoryPtr == 0)
-            {
-                Program.Log("No inventory component found!");
-                return false;
-            }
+        ulong inventoryPtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.InventoryComponent);
+        if (inventoryPtr == 0) return false;
 
-            ulong weaponPtr = Memory.ReadPtr(inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
-            if (weaponPtr == 0)
-            {
-                Program.Log("No current weapon found!");
-                return false;
-            }
+        ulong weaponPtr = Memory.ReadPtr(inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
+        if (weaponPtr == 0) return false;
 
-            animInstancePtr = Memory.ReadPtr(soldierPtr + Offsets.ASQSoldier.CachedAnimInstance1p);
-            if (animInstancePtr == 0)
-            {
-                Program.Log("No animation instance found!");
-                return false;
-            }
+        animInstancePtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.CachedAnimInstance1p);
+        weaponStaticInfoPtr = Memory.ReadPtr(weaponPtr + Offsets.ASQWeapon.WeaponStaticInfo);
 
-            weaponStaticInfoPtr = Memory.ReadPtr(weaponPtr + Offsets.ASQWeapon.WeaponStaticInfo);
-            if (weaponStaticInfoPtr == 0)
-            {
-                Program.Log("No weapon static info found!");
-                return false;
-            }
-
-            return true;
-        }
+        return animInstancePtr != 0 && weaponStaticInfoPtr != 0;
+    }
 
         // Helper method to update scatter entry addresses
         private IScatterWriteEntry UpdateEntryAddress(IScatterWriteEntry entry, ulong baseAddress)
@@ -597,17 +583,39 @@ namespace squad_dma
         {
             try
             {
-                if (_currentWeaponPtr == 0)
+                ulong pawnPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
+                if (pawnPtr == 0)
                 {
                     _lastNoRecoilWeaponPtr = 0;
+                    Program.Log("No-recoil/no-spread skipped: No acknowledged pawn.");
                     return;
                 }
 
-                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
+                // Check if the player is in a vehicle
+                string pawnClassName = Memory.GetActorClassName(pawnPtr);
+                bool isInVehicle = !pawnClassName.Contains("BP_Soldier");
+                if (isInVehicle)
+                {
+                    _lastNoRecoilWeaponPtr = 0;
+                   // Program.Log("No-recoil/no-spread skipped: Player is in a vehicle.");
+                    return;
+                }
+
+                if (_currentWeaponPtr == 0)
+                {
+                    _lastNoRecoilWeaponPtr = 0;
+                    // Program.Log("No-recoil/no-spread skipped: No current weapon detected.");
+                    return;
+                }
+
+                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr))
+                {
+                    Program.Log("No-recoil/no-spread skipped: Failed to get base pointers.");
+                    return;
+                }
 
                 var scatterEntries = new List<IScatterWriteEntry>();
 
-                // No-Recoil & NoSpread (apply once per weapon swap)
                 if (_currentWeaponPtr != _lastNoRecoilWeaponPtr || _lastNoRecoilWeaponPtr == 0)
                 {
                     scatterEntries.AddRange(_noRecoilAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
@@ -615,7 +623,7 @@ namespace squad_dma
                     scatterEntries.AddRange(_noSpreadAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
                     scatterEntries.AddRange(_noSpreadWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
                     _lastNoRecoilWeaponPtr = _currentWeaponPtr;
-                    Program.Log($"No-spread & No-recoil applied for weapon 0x{_currentWeaponPtr:X}");
+                    Program.Log($"No-recoil & no-spread applied for weapon 0x{_currentWeaponPtr:X}");
                 }
 
                 if (scatterEntries.Count > 0)
@@ -623,10 +631,7 @@ namespace squad_dma
                     Memory.WriteScatter(scatterEntries);
                 }
             }
-            catch (Exception ex)
-            {
-                Program.Log($"Failed to apply no-recoil/no-spread: {ex.Message}");
-            }
+            catch { /* Silently fail */ }
         }
         // no-recoil
         public void ApplyNoRecoil()
@@ -654,7 +659,7 @@ namespace squad_dma
                 {
                     Memory.WriteScatter(scatterEntries);
                     _lastNoRecoilWeaponPtr = _currentWeaponPtr; // Update last weapon pointer
-                    Program.Log($"No-recoil applied successfully for weapon at 0x{_currentWeaponPtr:X}.");
+                    //Program.Log($"No-recoil applied successfully for weapon at 0x{_currentWeaponPtr:X}.");
                 }
             }
             catch (Exception ex)
@@ -679,7 +684,7 @@ namespace squad_dma
                 if (scatterEntries.Count > 0)
                 {
                     Memory.WriteScatter(scatterEntries);
-                    Program.Log("No-sway applied successfully.");
+                    //Program.Log("No-sway applied successfully.");
                 }
             }
             catch (Exception ex)
@@ -704,7 +709,7 @@ namespace squad_dma
                 if (scatterEntries.Count > 0)
                 {
                     Memory.WriteScatter(scatterEntries);
-                    Program.Log("No-spread applied successfully.");
+                    //Program.Log("No-spread applied successfully.");
                 }
             }
             catch (Exception ex)
@@ -714,7 +719,7 @@ namespace squad_dma
         }
 
         // no-shake
-        public void ApplyNoShake()
+        public void ApplyNoCameraShake()
         {
             if (!_isFiring) return; // Only apply when firing
 
@@ -750,7 +755,7 @@ namespace squad_dma
                 if (scatterEntries.Count > 0)
                 {
                     Memory.WriteScatter(scatterEntries);
-                    Program.Log("No-shake applied successfully.");
+                    //Program.Log("No-shake applied successfully.");
                 }
             }
             catch (Exception ex)
@@ -812,7 +817,7 @@ namespace squad_dma
             round2.AddEntry<byte>(0, 1, weaponPtr + Offsets.ASQWeapon.bAimingDownSights);
             round2.AddEntry<ulong>(0, 2, weaponPtr + Offsets.ASQWeapon.CachedPipScope);
             round2.AddEntry<float>(0, 3, weaponPtr + Offsets.ASQWeapon.CurrentFOV);
-            round2.AddEntry<byte>(0, 4, weaponPtr + Offsets.ASQWeapon.bFireInput); // Already added previously
+            round2.AddEntry<byte>(0, 4, weaponPtr + Offsets.ASQWeapon.CurrentState);
             scatterMap.Execute();
 
             _isAimingDownSights = scatterMap.Results[0][1].TryGetResult<byte>(out byte ads) && ads == 1;

@@ -65,8 +65,22 @@ namespace squad_dma
         [JsonPropertyName("enableEsp")]
         public bool EnableEsp { get; set; }
 
+        [JsonPropertyName("espBones")]
+        public bool EspBones { get; set; }
+
         [JsonPropertyName("espShowAllies")]
         public bool EspShowAllies { get; set; }
+
+        // Writes :
+
+        [JsonPropertyName("noRecoil")]
+        public bool NoRecoil { get; set; }
+
+        [JsonPropertyName("noSway")]
+        public bool NoSway { get; set; }
+
+        [JsonPropertyName("noCameraShake")]
+        public bool NoCameraShake { get; set; }
 
         #endregion
 
@@ -114,8 +128,15 @@ namespace squad_dma
             EspShowHealth = false;
             EspMaxDistance = 1000f; // 1000M is max
             EspTextColor = DefaultPaintColors["EspText"];
-            EnableEsp = true; 
+            EnableEsp = true;
+            EspBones = true;
             EspShowAllies = false;
+
+            // Writes
+
+            NoRecoil = false;
+            NoSway = false;
+            NoCameraShake = false;
         }
 
         /// <summary>

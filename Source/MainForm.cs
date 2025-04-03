@@ -39,7 +39,7 @@ namespace squad_dma
         private int _lastEnemyTickets = 0;
         private int _lastKills = 0;
         private int _lastWoundeds = 0;
-        public int ZoomStep { get; set; } = 5; 
+        public int ZoomStep { get; set; } = 5;
         public float ZoomSensitivity { get; set; } = 1.0f;
 
         private EspOverlay _espOverlay;
@@ -179,9 +179,9 @@ namespace squad_dma
             }
 
             CleanupLoadedBitmaps();
-            Config.SaveConfig(_config); 
-            Memory.Shutdown(); 
-            e.Cancel = false; 
+            Config.SaveConfig(_config);
+            Memory.Shutdown();
+            e.Cancel = false;
             base.OnFormClosing(e);
         }
 
@@ -227,9 +227,9 @@ namespace squad_dma
             {
                 int zoomStep = 3;
                 if (e.Delta < 0)
-                    ZoomOut(zoomStep); 
+                    ZoomOut(zoomStep);
                 else if (e.Delta > 0)
-                    ZoomIn(zoomStep); 
+                    ZoomIn(zoomStep);
 
                 if (this._isFreeMapToggled && e.Delta < 0)
                 {
@@ -339,6 +339,7 @@ namespace squad_dma
 
             // ESP
             chkEnableEsp.Checked = _config.EnableEsp;
+            chkEnableBones.Checked = _config.EspBones;
             trkEspMaxDistance.Value = (int)_config.EspMaxDistance;
             lblEspMaxDistance.Text = $"Max Distance: {_config.EspMaxDistance}m";
             chkShowAllies.Checked = _config.EspShowAllies;
@@ -350,6 +351,12 @@ namespace squad_dma
             txtEspColorR.Text = _config.EspTextColor.R.ToString();
             txtEspColorG.Text = _config.EspTextColor.G.ToString();
             txtEspColorB.Text = _config.EspTextColor.B.ToString();
+
+            // Write 
+            grpWriteSettings.Visible = true;
+            chkEnableNoRecoil.Checked = _config.NoRecoil;
+            chkEnableNoSway.Checked = _config.NoSway;
+            chkEnableNoCameraShake.Checked = _config.NoCameraShake;
             #endregion
             #endregion
             InitiateFont();
@@ -472,7 +479,7 @@ namespace squad_dma
             {
                 UpdateSelectedMap();
 
-                if (_fpsWatch.ElapsedMilliseconds >= 1000) 
+                if (_fpsWatch.ElapsedMilliseconds >= 1000)
                 {
                     // Purge resources to mitigate memory leak
                     _mapCanvas.GRContext.PurgeResources();
@@ -485,12 +492,12 @@ namespace squad_dma
                         this.Text = $"Squad DMA ({fps} fps)";
                     });
 
-                    _fpsWatch.Restart(); 
-                    _fps = 0; 
+                    _fpsWatch.Restart();
+                    _fps = 0;
                 }
                 else
                 {
-                    _fps++; 
+                    _fps++;
                 }
             }
         }
@@ -1040,19 +1047,19 @@ namespace squad_dma
             using var outlinePaint = new SKPaint
             {
                 Color = outlineColor,
-                StrokeWidth = 4 * _uiScale, 
+                StrokeWidth = 4 * _uiScale,
                 IsAntialias = true,
                 Style = SKPaintStyle.Stroke,
-                StrokeCap = SKStrokeCap.Round 
+                StrokeCap = SKStrokeCap.Round
             };
 
             using var fillPaint = new SKPaint
             {
                 Color = fillColor,
-                StrokeWidth = 2 * _uiScale, 
+                StrokeWidth = 2 * _uiScale,
                 IsAntialias = true,
                 Style = SKPaintStyle.Stroke,
-                StrokeCap = SKStrokeCap.Round 
+                StrokeCap = SKStrokeCap.Round
             };
 
             float x1 = position.X - size;
@@ -1060,11 +1067,11 @@ namespace squad_dma
             float x2 = position.X + size;
             float y2 = position.Y + size;
 
-            canvas.DrawLine(x1, y1, x2, y2, outlinePaint); 
-            canvas.DrawLine(x2, y1, x1, y2, outlinePaint); 
+            canvas.DrawLine(x1, y1, x2, y2, outlinePaint);
+            canvas.DrawLine(x2, y1, x1, y2, outlinePaint);
 
-            canvas.DrawLine(x1, y1, x2, y2, fillPaint); 
-            canvas.DrawLine(x2, y1, x1, y2, fillPaint); 
+            canvas.DrawLine(x1, y1, x2, y2, fillPaint);
+            canvas.DrawLine(x2, y1, x1, y2, fillPaint);
         }
 
         private void DrawPOIs(SKCanvas canvas)
@@ -1130,7 +1137,7 @@ namespace squad_dma
                     double result = milliradians[i] + rate * (meters - distances[i]);
                     return Math.Round(result, 1); // Round to 1 decimal place
                 }
-                
+
             }
             return 800;
         }
@@ -1519,7 +1526,7 @@ namespace squad_dma
                         List<UActor> projectileAAs = new();
 
                         DrawMap(canvas);
-                        DrawActors(canvas, deadMarkers, projectileAAs); 
+                        DrawActors(canvas, deadMarkers, projectileAAs);
                         DrawPOIs(canvas);
                         DrawToolTips(canvas);
                         DrawTopMost(canvas, deadMarkers, projectileAAs);
@@ -1604,7 +1611,17 @@ namespace squad_dma
 
         private void btnRestartRadar_Click(object sender, EventArgs e)
         {
+            if (_espOverlay != null && !_espOverlay.IsDisposed)
+            {
+                _espOverlay.Close();
+                _espOverlay = null;
+            }
             Memory.Restart();
+            if (_config.EnableEsp)
+            {
+                _espOverlay = new EspOverlay();
+                _espOverlay.Show();
+            }
         }
 
         private bool DumpNames()
@@ -1654,6 +1671,24 @@ namespace squad_dma
 
         }
 
+        private void ChkEnableNoRecoilCheckedChanged(object sender, EventArgs e)
+        {
+            _config.NoRecoil = chkEnableNoRecoil.Checked;
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkEnableNoSwayCheckedChanged(object sender, EventArgs e)
+        {
+            _config.NoSway = chkEnableNoSway.Checked;
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkEnableNoCameraShakeCheckedChanged(object sender, EventArgs e)
+        {
+            _config.NoCameraShake = chkEnableNoCameraShake.Checked;
+            Config.SaveConfig(_config);
+        }
+
         #region ESP Event Handlers
         private void ChkEnableEsp_CheckedChanged(object sender, EventArgs e)
         {
@@ -1678,6 +1713,11 @@ namespace squad_dma
             }
         }
 
+        private void ChkEnableBones_CheckedChanged(object sender, EventArgs e)
+        {
+            _config.EspBones = chkEnableBones.Checked;
+            Config.SaveConfig(_config);
+        }
         private void TrkEspMaxDistance_Scroll(object sender, EventArgs e)
         {
             _config.EspMaxDistance = trkEspMaxDistance.Value;
@@ -1725,7 +1765,7 @@ namespace squad_dma
         {
             if (byte.TryParse(txtEspColorA.Text, out byte a) && a >= 0 && a <= 255)
             {
-                
+
                 var color = _config.EspTextColor;
                 color.A = a;
                 _config.EspTextColor = color;
@@ -1782,5 +1822,16 @@ namespace squad_dma
             }
         }
         #endregion
+
+        private void lblEspColorR_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void lblEspFontSize_Click(object sender, EventArgs e)
+        {
+
+        }
     }
+
 }

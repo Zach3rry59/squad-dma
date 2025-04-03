@@ -6,6 +6,26 @@ using System.Numerics;
 
 namespace squad_dma
 {
+    public struct FTransform
+    {
+        public Quaternion Rotation;
+        public Vector3 Translation;
+        public Vector3 Scale3D;
+
+        public Matrix4x4 ToMatrix()
+        {
+            return Matrix4x4.CreateFromQuaternion(Rotation) *
+                   Matrix4x4.CreateScale(Scale3D) *
+                   Matrix4x4.CreateTranslation(Translation);
+        }
+    }
+    public static class Vector2Extensions
+    {
+        public static RawVector2 ToRawVector2(this Vector2 vector)
+        {
+            return new RawVector2(vector.X, vector.Y);
+        }
+    }
     public class EspOverlay : Form
     {
         private WindowRenderTarget renderTarget;
@@ -94,7 +114,7 @@ namespace squad_dma
                     }
 
                     RenderFrame();
-                    Thread.Sleep(13); // ~60 FPS
+                    Thread.Sleep(12); // ~60 FPS
                     wasReadyLastFrame = true;
                 }
                 Program.Log("Render thread stopped.");
@@ -104,10 +124,9 @@ namespace squad_dma
 
         private bool IsReadyToRender()
         {
-            bool inGame = Game.InGame;
-            bool localPlayerExists = Game.LocalPlayer != null;
-            bool actorsExist = Game.Actors != null && Game.Actors.Count > 0;
-
+            bool inGame = Game?.InGame ?? false;
+            bool localPlayerExists = Game?.LocalPlayer != null;
+            bool actorsExist = Game?.Actors != null && Game.Actors.Count > 0;
             return inGame && localPlayerExists && actorsExist;
         }
 
@@ -132,9 +151,9 @@ namespace squad_dma
 
         private void DrawEsp(Dictionary<ulong, UActor> actors)
         {
-            if (Game.LocalPlayer == null || actors == null || actors.Count < 1)
+            if (Game == null || Game.LocalPlayer == null || actors == null || actors.Count < 1)
             {
-                Program.Log("LocalPlayer or actors not initialised.");
+                Program.Log("DrawEsp: Game, LocalPlayer, or actors not initialized.");
                 return;
             }
 
@@ -149,7 +168,8 @@ namespace squad_dma
 
             foreach (var actor in actors.Values)
             {
-                if (actor.Position == Vector3.Zero || !actor.IsAlive || actor.ActorType != ActorType.Player)
+
+                if (actor == null || actor.Position == Vector3.Zero || !actor.IsAlive || actor.ActorType != ActorType.Player)
                     continue;
 
                 if (Vector3.Distance(Game.LocalPlayer.Position, actor.Position) < 1.0f)
@@ -169,7 +189,6 @@ namespace squad_dma
                 string espText = GetEspText(actor, distance);
                 RawRectangleF textRect = GetEspTextRect(screenPos, Game.IsAimingDownSights, Game.HasPipScope);
 
-                // Text Render
                 brush.Color = new RawColor4(
                     Program.Config.EspTextColor.R / 255f,
                     Program.Config.EspTextColor.G / 255f,
@@ -182,6 +201,11 @@ namespace squad_dma
                     textRect,
                     brush
                 );
+
+                if (Program.Config.EspBones)
+                {
+                    DrawBoneEsp(actor, viewInfo);
+                }
             }
         }
 
@@ -202,6 +226,57 @@ namespace squad_dma
 
             return new RawRectangleF(x, y, x + width, y + height);
         }
+
+        private void DrawBoneEsp(UActor actor, MinimalViewInfo viewInfo)
+        {
+            if (actor.Mesh == 0 || actor.BoneScreenPositions == null)
+            {
+                Program.Log("Mesh pointer or bone data is null for actor.");
+                return;
+            }
+
+            brush.Color = new RawColor4(1.0f, 1.0f, 1.0f, 1.0f);
+            DrawBoneLines(actor.BoneScreenPositions);
+        }
+        private void DrawBoneLines(Vector2[] screenPositions)
+        {
+            // Head -> Neck -> Torso
+            DrawLine(screenPositions[0], screenPositions[1]); // Head -> Neck
+            DrawLine(screenPositions[1], screenPositions[2]); // Neck -> Torso
+
+            // Spine - pelvis
+            DrawLine(screenPositions[2], screenPositions[3]); // Torso -> Spine
+            DrawLine(screenPositions[3], screenPositions[4]); // Spine -> Pelvis
+
+            // Right arm
+            DrawLine(screenPositions[2], screenPositions[5]); 
+            DrawLine(screenPositions[5], screenPositions[6]); 
+            DrawLine(screenPositions[6], screenPositions[7]);
+            DrawLine(screenPositions[7], screenPositions[8]);
+
+            // Left arm
+            DrawLine(screenPositions[2], screenPositions[9]); 
+            DrawLine(screenPositions[9], screenPositions[10]); 
+            DrawLine(screenPositions[10], screenPositions[11]); 
+            DrawLine(screenPositions[11], screenPositions[12]); 
+
+            // Right leg
+            DrawLine(screenPositions[4], screenPositions[13]); 
+            DrawLine(screenPositions[13], screenPositions[14]); 
+            DrawLine(screenPositions[14], screenPositions[15]); 
+
+            // Left leg
+            DrawLine(screenPositions[4], screenPositions[16]); 
+            DrawLine(screenPositions[16], screenPositions[17]); 
+            DrawLine(screenPositions[17], screenPositions[18]); 
+        }
+
+        private void DrawLine(Vector2 start, Vector2 end)
+        {
+            if (start != Vector2.Zero && end != Vector2.Zero)
+                renderTarget.DrawLine(start.ToRawVector2(), end.ToRawVector2(), brush);
+        }
+
         protected override void OnClosed(EventArgs e)
         {
             running = false;

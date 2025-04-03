@@ -9,8 +9,7 @@ namespace squad_dma
     /// </summary>
     public class UActor
     {
-        private readonly object _posLock = new(); // sync access to this.Position (non-atomic)
-        private Vector3 _previousPosition = Vector3.Zero; // Track previous position for movement
+        private readonly object _posLock = new();
 
         #region PlayerProperties
         public uint NameId { get; set; }
@@ -21,6 +20,10 @@ namespace squad_dma
         public List<UActor> MySquadMembers { get; } = new List<UActor>();
         public Team Team { get; set; } = Team.Unknown;
         public int MissingCount { get; set; } = 0;
+        public ulong Mesh { get; set; }
+        public FTransform ComponentToWorld { get; set; }
+        public Dictionary<int, FTransform> BoneTransforms { get; set; } = new Dictionary<int, FTransform>();
+        public Vector2[] BoneScreenPositions { get; set; }
 
         public bool IsFriendly()
         {
@@ -57,7 +60,6 @@ namespace squad_dma
             {
                 lock (_posLock)
                 {
-                    _previousPosition = _pos; // Store the previous position before updating
                     _pos = value;
                 }
             }
@@ -82,6 +84,8 @@ namespace squad_dma
         {
             Debug.WriteLine("Actor Constructor: Initialization started.");
             this.Base = actorBase;
+            this.Mesh = Memory.ReadValue<ulong>(actorBase + 0x288); // Offset Mesh
+            //Program.Log($"Actor Mesh initialized: {this.Mesh:X}");
         }
         #endregion
     }
