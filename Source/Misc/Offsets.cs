@@ -22,6 +22,16 @@
         public const uint CurrentLayer = 0x568;
     }
 
+    public struct AGameStateBase
+    {
+	    public const uint PlayerArray = 0x240; // TArray<APlayerState*>
+    }
+
+    public struct APlayerState
+    {
+        public const uint APawn = 0x288; // TArray<APlayerState*>
+    }
+
     public struct SQLayer {
         public const uint LevelID = 0x70;
     }
