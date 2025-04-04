@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using Offsets;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Numerics;
@@ -470,6 +471,7 @@ namespace squad_dma
                     _squadCache = _squadCache.Where(kv => _actors.ContainsKey(kv.Key))
                                            .ToDictionary(kv => kv.Key, kv => kv.Value);
                 }
+                //UpdatePlayerArrayActors();
             }
             catch (GameEnded)
             {
@@ -490,6 +492,96 @@ namespace squad_dma
             Matrix4x4 finalMatrix = boneMatrix * worldMatrix;
             return new Vector3(finalMatrix.M41, finalMatrix.M42, finalMatrix.M43);
         }
+
+        /* public void UpdatePlayerArrayActors()
+        {
+            try
+            {
+                if (!Memory.Ready || Memory._squadBase == 0)
+                {
+                    Program.Log("Memory not ready or Squad base not found.");
+                    return;
+                }
+
+                ulong gWorldPtrAddr = Memory._squadBase + GameObjects.GWorld;
+                ulong gWorldAddr = Memory.ReadPtr(gWorldPtrAddr);
+                if (gWorldAddr == 0)
+                {
+                    Program.Log("Failed to read GWorld pointer.");
+                    return;
+                }
+
+                ulong gameStateAddr = Memory.ReadPtr(gWorldAddr + World.GameState);
+                if (gameStateAddr == 0)
+                {
+                    Program.Log("Failed to read GameState pointer.");
+                    return;
+                }
+
+                ulong playerArrayAddr = gameStateAddr + AGameStateBase.PlayerArray;
+                ulong playerArrayData = Memory.ReadPtr(playerArrayAddr);
+                int playerArraySize = Memory.ReadValue<int>(playerArrayAddr + 0x8);
+                if (playerArraySize <= 0)
+                {
+                    Program.Log("Invalid PlayerArray size read.");
+                    return;
+                }
+
+                Program.Log($"Found {playerArraySize} players in PlayerArray.");
+
+                // Set up scatter read
+                var scatterMap = new ScatterReadMap(playerArraySize);
+                var playerStateRound = scatterMap.AddRound();           // Read PlayerState addresses
+                var rootComponentRound = scatterMap.AddRound();        // Read RootComponent from PlayerState
+                var positionRound = scatterMap.AddRound();             // Read position from RootComponent
+
+                // Define offsets (adjust these based on your game)
+                var offsets = new { RootComponent = 0x138, RelativeLocation = 0x11C };
+
+                // Build scatter read entries
+                for (int i = 0; i < playerArraySize; i++)
+                {
+                    var playerStateAddr = playerStateRound.AddEntry<ulong>(i, 0, playerArrayData + (uint)(i * 0x8));
+                    var rootComponentAddr = rootComponentRound.AddEntry<ulong>(i, 1, playerStateAddr, null, Offsets.Actor.RootComponent);
+                    positionRound.AddEntry<Vector3>(i, 2, rootComponentAddr, null, Offsets.USceneComponent.RelativeLocation);
+                }
+
+                // Execute the scatter read
+                scatterMap.Execute();
+
+                // Process results
+                for (int i = 0; i < playerArraySize; i++)
+                {
+                    // Get PlayerState address
+                    if (!scatterMap.Results[i][0].TryGetResult<ulong>(out var playerStateAddr) || playerStateAddr == 0)
+                    {
+                        Console.WriteLine($"Player {i}: Invalid PlayerState address.");
+                        continue;
+                    }
+
+                    // Get RootComponent from PlayerState
+                    if (!scatterMap.Results[i][1].TryGetResult<ulong>(out var rootComponentAddr) || rootComponentAddr == 0)
+                    {
+                        Console.WriteLine($"Player {i}: No valid RootComponent in PlayerState.");
+                        continue; // Skip or handle as needed
+                    }
+
+                    // Get position from RootComponent
+                    if (scatterMap.Results[i][2].TryGetResult<Vector3>(out var position))
+                    {
+                        Console.WriteLine($"Player {i}: Position = ({position.X}, {position.Y}, {position.Z})");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Player {i}: Failed to read position from RootComponent.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+            }
+        } */
         #endregion
     }
 }
