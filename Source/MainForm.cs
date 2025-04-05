@@ -49,6 +49,8 @@ namespace squad_dma
         private bool _isWaitingForKey = false;
         private Button _currentKeybindButton = null;
         private Keys _currentKeybind = Keys.None;
+        private bool _isHolding_QuickZoom = false;
+
         #endregion
 
         #region Properties
@@ -202,21 +204,7 @@ namespace squad_dma
         {
             if (!InGame) return base.ProcessCmdKey(ref msg, keyData);
 
-            if (keyData == _config.KeybindSetInteractionDistances && chkSetInteractionDistances.Checked)
-            {
-                _config.SetInteractionDistances = !_config.SetInteractionDistances;
-                Memory._game?.SetInteractionDistances(_config.SetInteractionDistances);
-                UpdateStatusIndicator(lblStatusSetInteractionDistances, _config.SetInteractionDistances);
-                return true;
-            }
-            else if (keyData == _config.KeybindAllowShootingInMainBase && chkAllowShootingInMainBase.Checked)
-            {
-                _config.AllowShootingInMainBase = !_config.AllowShootingInMainBase;
-                Memory._game?.SetShootingInMainBase(_config.AllowShootingInMainBase);
-                UpdateStatusIndicator(lblStatusAllowShootingInMainBase, _config.AllowShootingInMainBase);
-                return true;
-            }
-            else if (keyData == _config.KeybindSpeedHack && chkSpeedHack.Checked)
+            if (keyData == _config.KeybindSpeedHack && chkSpeedHack.Checked)
             {
                 _config.SetSpeedHack = !_config.SetSpeedHack;
                 Memory._game?.SetSpeedHack(_config.SetSpeedHack);
@@ -228,6 +216,15 @@ namespace squad_dma
                 _config.SetAirStuck = !_config.SetAirStuck;
                 Memory._game?.SetAirStuck(_config.SetAirStuck);
                 UpdateStatusIndicator(lblStatusAirStuck, _config.SetAirStuck);
+
+                // If DisableCollision is checked, toggle it along with AirStuck
+                if (chkDisableCollision.Checked)
+                {
+                    _config.DisableCollision = _config.SetAirStuck;
+                    Memory._game?.DisableCollision(_config.DisableCollision);
+                }
+
+                Config.SaveConfig(_config);
                 return true;
             }
             else if (keyData == _config.KeybindHideActor && chkHideActor.Checked)
@@ -249,7 +246,7 @@ namespace squad_dma
             }
             else if (keyData == _config.KeybindToggleFullscreen)
             {
-                ToggleFullscreen(!WindowState.Equals(FormWindowState.Maximized));
+                ToggleFullscreen(FormBorderStyle is FormBorderStyle.Sizable);
                 return true;
             }
             else if (keyData == _config.KeybindDumpNames)
@@ -271,17 +268,6 @@ namespace squad_dma
                     EndKeybindCapture(keyData);
                     return true;
                 }
-            }
-
-            if (keyData == _config.KeybindToggleFullscreen)
-            {
-                ToggleFullscreen(!WindowState.Equals(FormWindowState.Maximized));
-                return true;
-            }
-            else if (keyData == _config.KeybindDumpNames)
-            {
-                DumpNames();
-                return true;
             }
 
             return base.ProcessCmdKey(ref msg, keyData);
@@ -306,11 +292,10 @@ namespace squad_dma
             }
 
             // Only update status for specified keybinds
-            if (statusLabel == lblStatusSetInteractionDistances ||
-                statusLabel == lblStatusAllowShootingInMainBase ||
-                statusLabel == lblStatusSpeedHack ||
+            if (statusLabel == lblStatusSpeedHack ||
                 statusLabel == lblStatusAirStuck ||
                 statusLabel == lblStatusHideActor ||
+                statusLabel == lblStatusQuickZoom ||
                 statusLabel == lblStatusToggleEnemyDistance)
             {
                 statusLabel.Text = isEnabled ? "ON" : "OFF";
@@ -319,12 +304,48 @@ namespace squad_dma
 
         private void InitializeKeybinds()
         {
-            // Set initial button texts from config
-            btnKeybindSetInteractionDistances.Text = _config.KeybindSetInteractionDistances == Keys.None ? "None" : _config.KeybindSetInteractionDistances.ToString();
-            btnKeybindAllowShootingInMainBase.Text = _config.KeybindAllowShootingInMainBase == Keys.None ? "None" : _config.KeybindAllowShootingInMainBase.ToString();
+            chkDisableSuppression.Checked = _config.DisableSuppression;
+            chkDisableSuppression.CheckedChanged += ChkDisableSuppression_CheckedChanged;
+
+            chkSetInteractionDistances.Checked = _config.SetInteractionDistances;
+            chkSetInteractionDistances.CheckedChanged += ChkSetInteractionDistances_CheckedChanged;
+
+            chkAllowShootingInMainBase.Checked = _config.AllowShootingInMainBase;
+            chkAllowShootingInMainBase.CheckedChanged += ChkAllowShootingInMainBase_CheckedChanged;
+
+            chkSpeedHack.Checked = _config.SetSpeedHack;
+            chkSpeedHack.CheckedChanged += ChkSetTimeDilation_CheckedChanged;
+
+            chkAirStuck.Checked = _config.SetAirStuck;
+            chkAirStuck.CheckedChanged += ChkAirStuck_CheckedChanged;
+
+            chkDisableCollision.Checked = _config.DisableCollision;
+            chkDisableCollision.Enabled = _config.SetAirStuck; // Only enable if AirStuck is checked
+            chkDisableCollision.CheckedChanged += ChkDisableCollision_CheckedChanged;
+
+            chkHideActor.Checked = _config.SetHideActor;
+            chkHideActor.CheckedChanged += ChkHideActor_CheckedChanged;
+
+            chkQuickZoom.Checked = _config.QuickZoom;
+            chkQuickZoom.CheckedChanged += ChkQuickZoom_CheckedChanged;
+
+            chkRapidFire.Checked = _config.RapidFire;
+            chkRapidFire.CheckedChanged += ChkRapidFire_CheckedChanged;
+
+            chkShowEnemyDistance.Checked = _config.ShowEnemyDistance;
+            chkShowEnemyDistance.CheckedChanged += ChkShowEnemyDistance_CheckedChanged;
+
+            chkInfiniteAmmo.Checked = _config.InfiniteAmmo;
+            chkInfiniteAmmo.CheckedChanged += ChkInfiniteAmmo_CheckedChanged;
+
+            chkQuickSwap.Checked = _config.QuickSwap;
+            chkQuickSwap.CheckedChanged += ChkQuickSwap_CheckedChanged;
+
+            // Keybind buttons
             btnKeybindSpeedHack.Text = _config.KeybindSpeedHack == Keys.None ? "None" : _config.KeybindSpeedHack.ToString();
             btnKeybindAirStuck.Text = _config.KeybindAirStuck == Keys.None ? "None" : _config.KeybindAirStuck.ToString();
             btnKeybindHideActor.Text = _config.KeybindHideActor == Keys.None ? "None" : _config.KeybindHideActor.ToString();
+            btnKeybindQuickZoom.Text = _config.KeybindQuickZoom == Keys.None ? "None" : _config.KeybindQuickZoom.ToString();
             btnKeybindToggleEnemyDistance.Text = _config.KeybindToggleEnemyDistance == Keys.None ? "None" : _config.KeybindToggleEnemyDistance.ToString();
             btnKeybindToggleMap.Text = _config.KeybindToggleMap == Keys.None ? "None" : _config.KeybindToggleMap.ToString();
             btnKeybindToggleFullscreen.Text = _config.KeybindToggleFullscreen == Keys.None ? "None" : _config.KeybindToggleFullscreen.ToString();
@@ -332,26 +353,45 @@ namespace squad_dma
             btnKeybindZoomIn.Text = _config.KeybindZoomIn == Keys.None ? "None" : _config.KeybindZoomIn.ToString();
             btnKeybindZoomOut.Text = _config.KeybindZoomOut == Keys.None ? "None" : _config.KeybindZoomOut.ToString();
 
-            // Set initial status indicators for specified features only
-            UpdateStatusIndicator(lblStatusSetInteractionDistances, _config.SetInteractionDistances);
-            UpdateStatusIndicator(lblStatusAllowShootingInMainBase, _config.AllowShootingInMainBase);
             UpdateStatusIndicator(lblStatusSpeedHack, _config.SetSpeedHack);
             UpdateStatusIndicator(lblStatusAirStuck, _config.SetAirStuck);
             UpdateStatusIndicator(lblStatusHideActor, _config.SetHideActor);
+            UpdateStatusIndicator(lblStatusQuickZoom, _config.QuickZoom);
             UpdateStatusIndicator(lblStatusToggleEnemyDistance, _config.ShowEnemyDistance);
         }
 
+
         private void InputUpdate_Tick(object sender, EventArgs e)
         {
-            if (!InputManager.IsManagerLoaded)
+            if (_isWaitingForKey)
                 return;
 
-            InputManager.UpdateKeys();
             HandleKeyboardInput();
         }
 
         private void HandleKeyboardInput()
         {
+            bool shift = ModifierKeys.HasFlag(Keys.Shift);
+            bool ctrl = ModifierKeys.HasFlag(Keys.Control);
+            bool alt = ModifierKeys.HasFlag(Keys.Alt);
+
+            // Hold-to-activate features
+            if (_config.KeybindQuickZoom != Keys.None && InputManager.IsKeyDown(_config.KeybindQuickZoom))
+            {
+                if (!_isHolding_QuickZoom)
+                {
+                    Memory._game?.SetQuickZoom(true);
+                    _isHolding_QuickZoom = true;
+                    UpdateStatusIndicator(lblStatusQuickZoom, true);
+                }
+            }
+            else if (_isHolding_QuickZoom)
+            {
+                Memory._game?.SetQuickZoom(false);
+                _isHolding_QuickZoom = false;
+                UpdateStatusIndicator(lblStatusQuickZoom, false);
+            }
+
             // Handle zoom controls
             if (InputManager.IsKeyDown(_config.KeybindZoomIn))
                 ZoomIn(_config.ZoomStep);
@@ -359,20 +399,6 @@ namespace squad_dma
                 ZoomOut(_config.ZoomStep);
 
             // Handle feature toggles with keybinds
-            if (InputManager.IsKeyPressed(_config.KeybindSetInteractionDistances) && chkSetInteractionDistances.Checked)
-            {
-                _config.SetInteractionDistances = !_config.SetInteractionDistances;
-                Memory._game?.SetInteractionDistances(_config.SetInteractionDistances);
-                Config.SaveConfig(_config);
-                UpdateStatusIndicator(lblStatusSetInteractionDistances, _config.SetInteractionDistances);
-            }
-            if (InputManager.IsKeyPressed(_config.KeybindAllowShootingInMainBase) && chkAllowShootingInMainBase.Checked)
-            {
-                _config.AllowShootingInMainBase = !_config.AllowShootingInMainBase;
-                Memory._game?.SetShootingInMainBase(_config.AllowShootingInMainBase);
-                Config.SaveConfig(_config);
-                UpdateStatusIndicator(lblStatusAllowShootingInMainBase, _config.AllowShootingInMainBase);
-            }
             if (InputManager.IsKeyPressed(_config.KeybindSpeedHack) && chkSpeedHack.Checked)
             {
                 _config.SetSpeedHack = !_config.SetSpeedHack;
@@ -384,8 +410,14 @@ namespace squad_dma
             {
                 _config.SetAirStuck = !_config.SetAirStuck;
                 Memory._game?.SetAirStuck(_config.SetAirStuck);
-                Config.SaveConfig(_config);
                 UpdateStatusIndicator(lblStatusAirStuck, _config.SetAirStuck);
+
+                // If DisableCollision is checked, toggle it along with AirStuck
+                if (chkDisableCollision.Checked)
+                {
+                    _config.DisableCollision = _config.SetAirStuck;
+                    Memory._game?.DisableCollision(_config.DisableCollision);
+                }
             }
             if (InputManager.IsKeyPressed(_config.KeybindHideActor) && chkHideActor.Checked)
             {
@@ -1813,50 +1845,24 @@ namespace squad_dma
             Memory._game?.SetSuppression(chkDisableSuppression.Checked);
             Config.SaveConfig(_config);
         }
-<<<<<<< HEAD
-        private void ChkSetTimeDilation_CheckedChanged(object sender, EventArgs e)
-        {
-            if (!InGame) return; // Keep this if you want in-game restriction
-            _config.SetSpeedHack = chkSpeedHack.Checked; // Update config with checkbox state
-            Memory._game?.SetSpeedHack(_config.SetSpeedHack); // Apply to game
-            UpdateStatusIndicator(lblStatusSpeedHack, _config.SetSpeedHack); // Update UI
-            Config.SaveConfig(_config); // Save state
-        }
-=======
->>>>>>> 8985e4d27d2362204da76568661f82b68ebcf159
 
         private void ChkSetInteractionDistances_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
-<<<<<<< HEAD
+
+            // Apply settings based on checkbox state directly
             _config.SetInteractionDistances = chkSetInteractionDistances.Checked;
             Memory._game?.SetInteractionDistances(_config.SetInteractionDistances);
-            UpdateStatusIndicator(lblStatusSetInteractionDistances, _config.SetInteractionDistances);
-=======
-            if (!chkSetInteractionDistances.Checked)
-            {
-                _config.SetInteractionDistances = false;
-                Memory._game?.SetInteractionDistances(false);
-                UpdateStatusIndicator(lblStatusSetInteractionDistances, false);
-            }
->>>>>>> 8985e4d27d2362204da76568661f82b68ebcf159
             Config.SaveConfig(_config);
         }
 
         private void ChkAllowShootingInMainBase_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
-<<<<<<< HEAD
+
+            // Apply settings based on checkbox state directly
             _config.AllowShootingInMainBase = chkAllowShootingInMainBase.Checked;
             Memory._game?.SetShootingInMainBase(_config.AllowShootingInMainBase);
-            UpdateStatusIndicator(lblStatusAllowShootingInMainBase, _config.AllowShootingInMainBase);
-=======
-            if (!chkAllowShootingInMainBase.Checked)
-            {
-                _config.AllowShootingInMainBase = false;
-                Memory._game?.SetShootingInMainBase(false);
-                UpdateStatusIndicator(lblStatusAllowShootingInMainBase, false);
-            }
             Config.SaveConfig(_config);
         }
 
@@ -1869,43 +1875,80 @@ namespace squad_dma
                 Memory._game?.SetSpeedHack(false);
                 UpdateStatusIndicator(lblStatusSpeedHack, false);
             }
->>>>>>> 8985e4d27d2362204da76568661f82b68ebcf159
             Config.SaveConfig(_config);
         }
 
         private void ChkAirStuck_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
-<<<<<<< HEAD
+
+            // Just update the config, don't enable the feature
             _config.SetAirStuck = chkAirStuck.Checked;
-            Memory._game?.SetAirStuck(_config.SetAirStuck);
-            UpdateStatusIndicator(lblStatusAirStuck, _config.SetAirStuck);
-=======
-            if (!chkAirStuck.Checked)
+
+            // Enable/disable DisableCollision checkbox based on AirStuck checkbox
+            chkDisableCollision.Enabled = chkAirStuck.Checked;
+
+            // If AirStuck checkbox is unchecked, uncheck DisableCollision checkbox too
+            if (!chkAirStuck.Checked && chkDisableCollision.Checked)
             {
-                _config.SetAirStuck = false;
-                Memory._game?.SetAirStuck(false);
-                UpdateStatusIndicator(lblStatusAirStuck, false);
+                chkDisableCollision.Checked = false;
+                _config.DisableCollision = false;
             }
->>>>>>> 8985e4d27d2362204da76568661f82b68ebcf159
+
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkDisableCollision_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!InGame) return;
+
+            // Only allow checking if AirStuck is checked
+            if (chkDisableCollision.Checked && !chkAirStuck.Checked)
+            {
+                chkDisableCollision.Checked = false;
+                return;
+            }
+
+            // Just update the config, don't enable the feature
+            _config.DisableCollision = chkDisableCollision.Checked;
             Config.SaveConfig(_config);
         }
 
         private void ChkHideActor_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
-<<<<<<< HEAD
-            _config.SetHideActor = chkHideActor.Checked;
-            Memory._game?.SetHideActor(_config.SetHideActor);
-            UpdateStatusIndicator(lblStatusHideActor, _config.SetHideActor);
-=======
             if (!chkHideActor.Checked)
             {
                 _config.SetHideActor = false;
                 Memory._game?.SetHideActor(false);
                 UpdateStatusIndicator(lblStatusHideActor, false);
             }
->>>>>>> 8985e4d27d2362204da76568661f82b68ebcf159
+            Config.SaveConfig(_config);
+        }
+        private void ChkQuickZoom_CheckedChanged(object sender, EventArgs e)
+        {
+            _config.QuickZoom = chkQuickZoom.Checked;
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkRapidFire_CheckedChanged(object sender, EventArgs e)
+        {
+            _config.RapidFire = chkRapidFire.Checked;
+            Memory._game?.SetRapidFire(_config.RapidFire);
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkInfiniteAmmo_CheckedChanged(object sender, EventArgs e)
+        {
+            _config.InfiniteAmmo = chkInfiniteAmmo.Checked;
+            Memory._game?.SetInfiniteAmmo(_config.InfiniteAmmo);
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkQuickSwap_CheckedChanged(object sender, EventArgs e)
+        {
+            _config.QuickSwap = chkQuickSwap.Checked;
+            Memory._game?.SetQuickSwap(_config.QuickSwap);
             Config.SaveConfig(_config);
         }
         #endregion
@@ -1955,14 +1998,6 @@ namespace squad_dma
             {
                 _config.KeybindToggleEnemyDistance = key;
             }
-            else if (_currentKeybindButton == btnKeybindSetInteractionDistances)
-            {
-                _config.KeybindSetInteractionDistances = key;
-            }
-            else if (_currentKeybindButton == btnKeybindAllowShootingInMainBase)
-            {
-                _config.KeybindAllowShootingInMainBase = key;
-            }
             else if (_currentKeybindButton == btnKeybindSpeedHack)
             {
                 _config.KeybindSpeedHack = key;
@@ -1974,6 +2009,10 @@ namespace squad_dma
             else if (_currentKeybindButton == btnKeybindHideActor)
             {
                 _config.KeybindHideActor = key;
+            }
+            else if (_currentKeybindButton == btnKeybindQuickZoom)
+            {
+                _config.KeybindQuickZoom = key;
             }
             else if (_currentKeybindButton == btnKeybindDumpNames)
             {
@@ -1991,18 +2030,6 @@ namespace squad_dma
             Config.SaveConfig(_config);
             _currentKeybindButton = null;
         }
-
-        // Keybind button click handlers
-        private void BtnKeybindSetInteractionDistances_Click(object sender, EventArgs e)
-        {
-            StartKeybindCapture(btnKeybindSetInteractionDistances);
-        }
-
-        private void BtnKeybindAllowShootingInMainBase_Click(object sender, EventArgs e)
-        {
-            StartKeybindCapture(btnKeybindAllowShootingInMainBase);
-        }
-
         private void BtnKeybindSpeedHack_Click(object sender, EventArgs e)
         {
             StartKeybindCapture(btnKeybindSpeedHack);
@@ -2235,6 +2262,16 @@ namespace squad_dma
         }
 
         private void lblEspFontSize_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void grpConfig_Enter(object sender, EventArgs e)
+        {
+
+        }
+
+        private void grpConfig_Enter_1(object sender, EventArgs e)
         {
 
         }

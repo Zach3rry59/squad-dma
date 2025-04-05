@@ -78,6 +78,12 @@ namespace squad_dma
         public void SetSpeedHack(bool enable) => _localSoldier?.SetSpeedHack(enable);
         public void SetAirStuck(bool enable) => _localSoldier?.SetAirStuck(enable);
         public void SetHideActor(bool enable) => _localSoldier?.SetHideActor(enable);
+        public void DisableCollision(bool disable) => _localSoldier?.DisableCollision(disable);
+        public void SetQuickZoom(bool enable) => _localSoldier?.SetQuickZoom(enable);
+        public void SetRapidFire(bool enable) => _localSoldier?.SetRapidFire(enable);
+        public void SetInfiniteAmmo(bool enable) => _localSoldier?.SetInfiniteAmmo(enable);
+        public void SetQuickSwap(bool enable) => _localSoldier?.SetQuickSwap(enable);
+        public void ReadCurrentWeapons(bool includeOtherPlayers = false) => _localSoldier?.ReadCurrentWeapons(includeOtherPlayers);
         public void WaitForGame()
         {
             while (true)
@@ -143,9 +149,8 @@ namespace squad_dma
                     ApplyNoCameraShake();
                 }
                 //LogTeamInfo();
-                if (DateTime.Now.Second % 3 == 0) // Adjust as needed
+                if (DateTime.Now.Second % 10 == 0) // Adjust as needed
                 {
-                    //VehicleTeam();
                 }
             }
             catch (DMAShutdown)

@@ -101,7 +101,12 @@
         public const uint TeamState = 0x590; // ASQTeamState*
     }
 
-    public struct Camera //APlayerCameraManager
+    public struct PlayerCameraManager
+    {
+        public const uint DefaultFOV = 0x240;
+    }
+
+    public struct Camera
     {
         public const uint PCOwner = 0x228;
         public const uint CameraCache = 0x1AF0; // CachePrivate :: FCameraCacheEntry > 0x10 = FMinimalViewInfo 
@@ -276,11 +281,6 @@
         public const uint SwayData = 0x9c4; // FSQSwayData
         public const uint SwayAlignmentData = 0xa58; // FSQSwayData
     }
-
-    public struct USQPawnInventoryComponent
-    {
-        public const uint CurrentWeapon = 0x150; // ASQEquipableItem*
-    }
     public struct ASQWeapon
     {
         public const uint bAimingDownSights = 0x6fc; // bool
@@ -289,6 +289,7 @@
         public const uint bFireInput = 0x6fd; // bool
         public const uint WeaponStaticInfo = 0x488; // USQWeaponStaticInfo*
         public const uint CurrentState = 0x6e8; // ESQWeaponState
+        public const uint WeaponConfig = 0x620; // FSQWeaponData
     }
     public struct FSQSwayData
     {
@@ -300,6 +301,48 @@
     {
         public const uint CurrentMagnificationLevel = 0x960; // int32
 
+    }
+
+    public struct USQPawnInventoryComponent
+    {
+        public const uint CurrentWeapon = 0x150; // ASQEquipableItem*
+        public const uint CurrentItemStaticInfo = 0x140; // USQItemStaticInfo*
+        public const uint CurrentWeaponSlot = 0x18c; // int32
+        public const uint CurrentWeaponOffset = 0x190; // int32
+        public const uint Inventory = 0x198; // TArray<FSQWeaponGroupData>
+    }
+
+    public struct FSQWeaponData
+    {
+        public const uint bInfiniteAmmo = 0x0; // bool
+        public const uint bInfiniteMags = 0x1; // bool
+        public const uint MaxMags = 0x4; // int32
+        public const uint RoundsPerMag = 0x8; // int32
+        public const uint bAllowRoundInChamber = 0xc; // bool
+        public const uint bAllowSingleLoad = 0xd; // bool
+        public const uint FireModes = 0x10; // TArray<int32>
+        public const uint TimeBetweenShots = 0x20; // float
+        public const uint TimeBetweenSingleShots = 0x24; // float
+        public const uint bCanReloadWhenEquipping = 0x28; // bool
+        public const uint bCreateProjectileOnServer = 0x29; // bool
+        public const uint TacticalReloadDuration = 0x2c; // float
+        public const uint DryReloadDuration = 0x34; // float
+        public const uint TacticalReloadBipodDuration = 0x38; // float
+        public const uint ReloadDryBipodDuration = 0x3c; // float
+        public const uint MaxDamageToApply = 0x64; // float
+    }
+
+    public struct ASQEquipableItem
+    {
+        public const uint ItemStaticInfo = 0x228; // USQItemStaticInfo*
+        public const uint ItemStaticInfoClass = 0x230; // TSubclassOf<USQItemStaticInfo*>
+        public const uint DisplayName = 0x270; // FText
+        public const uint ItemCount = 0x34c; // int32
+        public const uint MaxItemCount = 0x350; // int32
+        public const uint EquipDuration = 0x36c; // float
+        public const uint UnequipDuration = 0x370; // float
+        public const uint CachedEquipDuration = 0x448; // float
+        public const uint CachedUnequipDuration = 0x44c; // float
     }
 
     public struct SQVehicle

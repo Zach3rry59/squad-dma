@@ -103,11 +103,20 @@ namespace squad_dma
         [JsonPropertyName("setHideActor")]
         public bool SetHideActor { get; set; } = false;
 
-        [JsonPropertyName("keybindSetInteractionDistances")]
-        public Keys KeybindSetInteractionDistances { get; set; } = Keys.None;
+        [JsonPropertyName("disableCollision")]
+        public bool DisableCollision { get; set; } = false;
 
-        [JsonPropertyName("keybindAllowShootingInMainBase")]
-        public Keys KeybindAllowShootingInMainBase { get; set; } = Keys.None;
+        [JsonPropertyName("quickZoom")]
+        public bool QuickZoom { get; set; } = false;
+
+        [JsonPropertyName("rapidFire")]
+        public bool RapidFire { get; set; } = false;
+
+        [JsonPropertyName("infiniteAmmo")]
+        public bool InfiniteAmmo { get; set; } = false;
+
+        [JsonPropertyName("quickSwap")]
+        public bool QuickSwap { get; set; } = false;
 
         [JsonPropertyName("keybindSpeedHack")]
         public Keys KeybindSpeedHack { get; set; } = Keys.None;
@@ -117,6 +126,9 @@ namespace squad_dma
 
         [JsonPropertyName("keybindHideActor")]
         public Keys KeybindHideActor { get; set; } = Keys.None;
+
+        [JsonPropertyName("keybindQuickZoom")]
+        public Keys KeybindQuickZoom { get; set; } = Keys.None;
 
         [JsonPropertyName("keybindToggleEnemyDistance")]
         public Keys KeybindToggleEnemyDistance { get; set; } = Keys.None;
