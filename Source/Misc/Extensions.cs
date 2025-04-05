@@ -74,7 +74,6 @@ namespace squad_dma
 
             SKPaint newPaint = SKPaints.PaintBase.Clone();
             newPaint.Color = color;
-            teamEntityPaints[actor.Team] = newPaint;
             return newPaint;
         }
 

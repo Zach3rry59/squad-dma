@@ -10,70 +10,57 @@ namespace squad_dma
 {
     public partial class MainForm : Form
     {
+        #region Fields
         private readonly Config _config;
-        private readonly SKGLControl _mapCanvas;
+        private SKGLControl _mapCanvas;
         private readonly Stopwatch _fpsWatch = new();
         private readonly object _renderLock = new();
         private readonly object _loadMapBitmapsLock = new();
         private readonly System.Timers.Timer _mapChangeTimer = new(100);
-        private readonly List<Map> _maps = new(); // Contains all maps from \\Maps folder
-        private readonly DarkModeCS _darkmode;
-        private bool _isFreeMapToggled = false;
+        private readonly List<Map> _maps = new();
+        private DarkModeCS _darkmode;
+        private readonly Dictionary<UActor, Vector3> _aaProjectileOrigins = new();
+        private readonly List<PointOfInterest> _pointsOfInterest = new();
+        private System.Windows.Forms.Timer _panTimer;
+
+        private bool _isFreeMapToggled;
+        private bool _isDragging;
         private float _uiScale = 1.0f;
-        private UActor _closestPlayerToMouse = null;
-        private bool _isDragging = false;
-        private Point _lastMousePosition = Point.Empty;
-        private int _fps = 0;
-        private int _mapSelectionIndex = 0;
+        private int _fps;
+        private int _mapSelectionIndex;
+        private int _lastFriendlyTickets;
+        private int _lastEnemyTickets;
+        private int _lastKills;
+        private int _lastWoundeds;
+
         private Map _selectedMap;
         private SKBitmap[] _loadedBitmaps;
         private MapPosition _mapPanPosition = new();
-        private readonly List<PointOfInterest> _pointsOfInterest = new();
+        private Point _lastMousePosition;
         private PointOfInterest _hoveredPoi;
+        private UActor _closestPlayerToMouse;
+        private SKPoint _targetPanPosition;
+
         private const float DRAG_SENSITIVITY = 3.5f;
         private const double PAN_SMOOTHNESS = 0.1;
         private const int PAN_INTERVAL = 10;
-        private SKPoint targetPanPosition;
-        private System.Windows.Forms.Timer panTimer;
-        private int _lastFriendlyTickets = 0;
-        private int _lastEnemyTickets = 0;
-        private int _lastKills = 0;
-        private int _lastWoundeds = 0;
-        public int ZoomStep { get; set; } = 5;
-        public float ZoomSensitivity { get; set; } = 1.0f;
-
         private EspOverlay _espOverlay;
 
+        private bool _isWaitingForKey = false;
+        private Button _currentKeybindButton = null;
+        private Keys _currentKeybind = Keys.None;
+        #endregion
+
+        #region Properties
+        private bool Ready => Memory.Ready;
+        private bool InGame => Memory.InGame;
+        private string MapName => Memory.MapName;
+        private UActor LocalPlayer => Memory.LocalPlayer;
+        private ReadOnlyDictionary<ulong, UActor> AllActors => Memory.Actors;
+        private Vector3 AbsoluteLocation => Memory.AbsoluteLocation;
+        #endregion
+
         #region Getters
-        private bool Ready
-        {
-            get => Memory.Ready;
-        }
-
-        private bool InGame
-        {
-            get => Memory.InGame;
-        }
-        private string MapName
-        {
-            get => Memory.MapName;
-        }
-
-        private UActor LocalPlayer
-        {
-            get => Memory.LocalPlayer;
-        }
-
-        private ReadOnlyDictionary<ulong, UActor> AllActors
-        {
-            get => Memory.Actors;
-        }
-
-        private Vector3 AbsoluteLocation
-        {
-            get => Memory.AbsoluteLocation;
-        }
-
         public void AddPointOfInterest(Vector3 position, string name)
         {
             _pointsOfInterest.Add(new PointOfInterest(position, name));
@@ -109,12 +96,31 @@ namespace squad_dma
             }
 
             LoadConfig();
-            SetDarkMode(ref _darkmode);
-            this.Size = new Size(1280, 720);
-            this.StartPosition = FormStartPosition.CenterScreen;
-            this.WindowState = FormWindowState.Normal;
+            InitializeDarkMode();
+            InitializeFormSettings();
+            InitializeMapCanvas();
+            InitializeTimers();
+            InitializeEventHandlers();
+            LoadInitialData();
+            InitializeKeybinds();
+        }
 
-            _mapCanvas = new SKGLControl()
+        private void InitializeDarkMode()
+        {
+            _darkmode = new DarkModeCS(this);
+        }
+
+        private void InitializeFormSettings()
+        {
+            Size = new Size(1280, 720);
+            StartPosition = FormStartPosition.CenterScreen;
+            WindowState = FormWindowState.Normal;
+            DoubleBuffered = true;
+        }
+
+        private void InitializeMapCanvas()
+        {
+            _mapCanvas = new SKGLControl
             {
                 Size = new Size(50, 50),
                 Dock = DockStyle.Fill,
@@ -122,50 +128,57 @@ namespace squad_dma
             };
             tabRadar.Controls.Add(_mapCanvas);
             chkMapFree.Parent = _mapCanvas;
-
-            LoadMaps();
-
+        }
+        private void InitializeTimers()
+        {
             _mapChangeTimer.AutoReset = false;
             _mapChangeTimer.Elapsed += MapChangeTimer_Elapsed;
 
-            this.DoubleBuffered = true;
-            this.Shown += frmMain_Shown;
-
-            _mapCanvas.PaintSurface += skMapCanvas_PaintSurface;
-            ticketsPanel.Paint += ticketsPanel_Paint;
-            _mapCanvas.MouseMove += skMapCanvas_MouseMove;
-            _mapCanvas.MouseDown += skMapCanvas_MouseDown;
-            _mapCanvas.MouseDoubleClick += skMapCanvas_MouseDoubleClick;
-            _mapCanvas.MouseUp += skMapCanvas_MouseUp;
-
-            tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
-            _fpsWatch.Start();
-
-            panTimer = new System.Windows.Forms.Timer();
-            panTimer.Interval = PAN_INTERVAL;
-            panTimer.Tick += PanTimer_Tick;
+            _panTimer = new System.Windows.Forms.Timer { Interval = PAN_INTERVAL };
+            _panTimer.Tick += PanTimer_Tick;
 
             var inputTimer = new System.Windows.Forms.Timer { Interval = 10 };
             inputTimer.Tick += InputUpdate_Tick;
             inputTimer.Start();
 
-            var _ticketUpdateTimer = new System.Windows.Forms.Timer { Interval = 1000 }; // 1 second interval
-            _ticketUpdateTimer.Tick += (sender, e) => UpdateTicketsDisplay();
-            _ticketUpdateTimer.Start();
+            var ticketUpdateTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+            ticketUpdateTimer.Tick += (s, e) => UpdateTicketsDisplay();
+            ticketUpdateTimer.Start();
 
             var stateMonitor = new System.Windows.Forms.Timer { Interval = 500 };
             stateMonitor.Tick += (s, e) => HandleGameStateChange();
             stateMonitor.Start();
         }
 
+        private void InitializeEventHandlers()
+        {
+            Shown += frmMain_Shown;
+            _mapCanvas.PaintSurface += skMapCanvas_PaintSurface;
+            ticketsPanel.Paint += ticketsPanel_Paint;
+            _mapCanvas.MouseMove += skMapCanvas_MouseMove;
+            _mapCanvas.MouseDown += skMapCanvas_MouseDown;
+            _mapCanvas.MouseDoubleClick += skMapCanvas_MouseDoubleClick;
+            _mapCanvas.MouseUp += skMapCanvas_MouseUp;
+            tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
+
+            // Add Local Soldier feature event handlers
+            chkDisableSuppression.CheckedChanged += ChkDisableSuppression_CheckedChanged;
+            chkSetInteractionDistances.CheckedChanged += ChkSetInteractionDistances_CheckedChanged;
+            chkAllowShootingInMainBase.CheckedChanged += ChkAllowShootingInMainBase_CheckedChanged;
+            chkSpeedHack.CheckedChanged += ChkSetTimeDilation_CheckedChanged;
+            chkAirStuck.CheckedChanged += ChkAirStuck_CheckedChanged;
+            chkHideActor.CheckedChanged += ChkHideActor_CheckedChanged;
+        }
+
+        private void LoadInitialData()
+        {
+            LoadConfig();
+            LoadMaps();
+            _fpsWatch.Start();
+        }
         #endregion
 
         #region Overrides
-        private void SetDarkMode(ref DarkModeCS darkmode)
-        {
-            darkmode = new DarkModeCS(this);
-        }
-
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             e.Cancel = true;
@@ -185,16 +198,148 @@ namespace squad_dma
             base.OnFormClosing(e);
         }
 
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData) => keyData switch
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            Keys.F4 => ToggleEnemyDistance(),
-            Keys.F5 => ToggleMap(),
-#if DEBUG
-            Keys.F6 => DumpNames(),
-#endif         
-            Keys.F11 => ToggleFullscreen(FormBorderStyle is FormBorderStyle.Sizable),
-            _ => base.ProcessCmdKey(ref msg, keyData),
-        };
+            if (!InGame) return base.ProcessCmdKey(ref msg, keyData);
+
+            if (keyData == _config.KeybindSetInteractionDistances && chkSetInteractionDistances.Checked)
+            {
+                _config.SetInteractionDistances = !_config.SetInteractionDistances;
+                Memory._game?.SetInteractionDistances(_config.SetInteractionDistances);
+                UpdateStatusIndicator(lblStatusSetInteractionDistances, _config.SetInteractionDistances);
+                return true;
+            }
+            else if (keyData == _config.KeybindAllowShootingInMainBase && chkAllowShootingInMainBase.Checked)
+            {
+                _config.AllowShootingInMainBase = !_config.AllowShootingInMainBase;
+                Memory._game?.SetShootingInMainBase(_config.AllowShootingInMainBase);
+                UpdateStatusIndicator(lblStatusAllowShootingInMainBase, _config.AllowShootingInMainBase);
+                return true;
+            }
+            else if (keyData == _config.KeybindSpeedHack && chkSpeedHack.Checked)
+            {
+                _config.SetSpeedHack = !_config.SetSpeedHack;
+                Memory._game?.SetSpeedHack(_config.SetSpeedHack);
+                UpdateStatusIndicator(lblStatusSpeedHack, _config.SetSpeedHack);
+                return true;
+            }
+            else if (keyData == _config.KeybindAirStuck && chkAirStuck.Checked)
+            {
+                _config.SetAirStuck = !_config.SetAirStuck;
+                Memory._game?.SetAirStuck(_config.SetAirStuck);
+                UpdateStatusIndicator(lblStatusAirStuck, _config.SetAirStuck);
+                return true;
+            }
+            else if (keyData == _config.KeybindHideActor && chkHideActor.Checked)
+            {
+                _config.SetHideActor = !_config.SetHideActor;
+                Memory._game?.SetHideActor(_config.SetHideActor);
+                UpdateStatusIndicator(lblStatusHideActor, _config.SetHideActor);
+                return true;
+            }
+            else if (keyData == _config.KeybindToggleEnemyDistance)
+            {
+                ToggleEnemyDistance();
+                return true;
+            }
+            else if (keyData == _config.KeybindToggleMap)
+            {
+                ToggleMap();
+                return true;
+            }
+            else if (keyData == _config.KeybindToggleFullscreen)
+            {
+                ToggleFullscreen(!WindowState.Equals(FormWindowState.Maximized));
+                return true;
+            }
+            else if (keyData == _config.KeybindDumpNames)
+            {
+                DumpNames();
+                return true;
+            }
+
+            if (_isWaitingForKey)
+            {
+                if (keyData == Keys.Escape)
+                {
+                    EndKeybindCapture(Keys.None);
+                    return true;
+                }
+
+                if (keyData != Keys.None)
+                {
+                    EndKeybindCapture(keyData);
+                    return true;
+                }
+            }
+
+            if (keyData == _config.KeybindToggleFullscreen)
+            {
+                ToggleFullscreen(!WindowState.Equals(FormWindowState.Maximized));
+                return true;
+            }
+            else if (keyData == _config.KeybindDumpNames)
+            {
+                DumpNames();
+                return true;
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private bool ToggleEnemyDistance()
+        {
+            _config.ShowEnemyDistance = !_config.ShowEnemyDistance;
+            chkShowEnemyDistance.Checked = _config.ShowEnemyDistance;
+            _mapCanvas.Invalidate();
+            Config.SaveConfig(_config);
+            UpdateStatusIndicator(lblStatusToggleEnemyDistance, _config.ShowEnemyDistance);
+            return true;
+        }
+
+        private void UpdateStatusIndicator(Label statusLabel, bool isEnabled)
+        {
+            if (statusLabel.InvokeRequired)
+            {
+                statusLabel.Invoke(new Action(() => UpdateStatusIndicator(statusLabel, isEnabled)));
+                return;
+            }
+
+            // Only update status for specified keybinds
+            if (statusLabel == lblStatusSetInteractionDistances ||
+                statusLabel == lblStatusAllowShootingInMainBase ||
+                statusLabel == lblStatusSpeedHack ||
+                statusLabel == lblStatusAirStuck ||
+                statusLabel == lblStatusHideActor ||
+                statusLabel == lblStatusToggleEnemyDistance)
+            {
+                statusLabel.Text = isEnabled ? "ON" : "OFF";
+            }
+        }
+
+        private void InitializeKeybinds()
+        {
+            // Set initial button texts from config
+            btnKeybindSetInteractionDistances.Text = _config.KeybindSetInteractionDistances == Keys.None ? "None" : _config.KeybindSetInteractionDistances.ToString();
+            btnKeybindAllowShootingInMainBase.Text = _config.KeybindAllowShootingInMainBase == Keys.None ? "None" : _config.KeybindAllowShootingInMainBase.ToString();
+            btnKeybindSpeedHack.Text = _config.KeybindSpeedHack == Keys.None ? "None" : _config.KeybindSpeedHack.ToString();
+            btnKeybindAirStuck.Text = _config.KeybindAirStuck == Keys.None ? "None" : _config.KeybindAirStuck.ToString();
+            btnKeybindHideActor.Text = _config.KeybindHideActor == Keys.None ? "None" : _config.KeybindHideActor.ToString();
+            btnKeybindToggleEnemyDistance.Text = _config.KeybindToggleEnemyDistance == Keys.None ? "None" : _config.KeybindToggleEnemyDistance.ToString();
+            btnKeybindToggleMap.Text = _config.KeybindToggleMap == Keys.None ? "None" : _config.KeybindToggleMap.ToString();
+            btnKeybindToggleFullscreen.Text = _config.KeybindToggleFullscreen == Keys.None ? "None" : _config.KeybindToggleFullscreen.ToString();
+            btnKeybindDumpNames.Text = _config.KeybindDumpNames == Keys.None ? "None" : _config.KeybindDumpNames.ToString();
+            btnKeybindZoomIn.Text = _config.KeybindZoomIn == Keys.None ? "None" : _config.KeybindZoomIn.ToString();
+            btnKeybindZoomOut.Text = _config.KeybindZoomOut == Keys.None ? "None" : _config.KeybindZoomOut.ToString();
+
+            // Set initial status indicators for specified features only
+            UpdateStatusIndicator(lblStatusSetInteractionDistances, _config.SetInteractionDistances);
+            UpdateStatusIndicator(lblStatusAllowShootingInMainBase, _config.AllowShootingInMainBase);
+            UpdateStatusIndicator(lblStatusSpeedHack, _config.SetSpeedHack);
+            UpdateStatusIndicator(lblStatusAirStuck, _config.SetAirStuck);
+            UpdateStatusIndicator(lblStatusHideActor, _config.SetHideActor);
+            UpdateStatusIndicator(lblStatusToggleEnemyDistance, _config.ShowEnemyDistance);
+        }
 
         private void InputUpdate_Tick(object sender, EventArgs e)
         {
@@ -202,51 +347,281 @@ namespace squad_dma
                 return;
 
             InputManager.UpdateKeys();
+            HandleKeyboardInput();
+        }
 
-            // Handle Zoom
-            if (InputManager.IsKeyDown(_config.ZoomInKey))
+        private void HandleKeyboardInput()
+        {
+            // Handle zoom controls
+            if (InputManager.IsKeyDown(_config.KeybindZoomIn))
                 ZoomIn(_config.ZoomStep);
-            else if (InputManager.IsKeyDown(_config.ZoomOutKey))
+            else if (InputManager.IsKeyDown(_config.KeybindZoomOut))
                 ZoomOut(_config.ZoomStep);
 
-            // Handle Functions - using IsKeyPressed for single press detection
-            if (InputManager.IsKeyPressed(Keys.F4))
-                ToggleEnemyDistance();
+            // Handle feature toggles with keybinds
+            if (InputManager.IsKeyPressed(_config.KeybindSetInteractionDistances) && chkSetInteractionDistances.Checked)
+            {
+                _config.SetInteractionDistances = !_config.SetInteractionDistances;
+                Memory._game?.SetInteractionDistances(_config.SetInteractionDistances);
+                Config.SaveConfig(_config);
+                UpdateStatusIndicator(lblStatusSetInteractionDistances, _config.SetInteractionDistances);
+            }
+            if (InputManager.IsKeyPressed(_config.KeybindAllowShootingInMainBase) && chkAllowShootingInMainBase.Checked)
+            {
+                _config.AllowShootingInMainBase = !_config.AllowShootingInMainBase;
+                Memory._game?.SetShootingInMainBase(_config.AllowShootingInMainBase);
+                Config.SaveConfig(_config);
+                UpdateStatusIndicator(lblStatusAllowShootingInMainBase, _config.AllowShootingInMainBase);
+            }
+            if (InputManager.IsKeyPressed(_config.KeybindSpeedHack) && chkSpeedHack.Checked)
+            {
+                _config.SetSpeedHack = !_config.SetSpeedHack;
+                Memory._game?.SetSpeedHack(_config.SetSpeedHack);
+                Config.SaveConfig(_config);
+                UpdateStatusIndicator(lblStatusSpeedHack, _config.SetSpeedHack);
+            }
+            if (InputManager.IsKeyPressed(_config.KeybindAirStuck) && chkAirStuck.Checked)
+            {
+                _config.SetAirStuck = !_config.SetAirStuck;
+                Memory._game?.SetAirStuck(_config.SetAirStuck);
+                Config.SaveConfig(_config);
+                UpdateStatusIndicator(lblStatusAirStuck, _config.SetAirStuck);
+            }
+            if (InputManager.IsKeyPressed(_config.KeybindHideActor) && chkHideActor.Checked)
+            {
+                _config.SetHideActor = !_config.SetHideActor;
+                Memory._game?.SetHideActor(_config.SetHideActor);
+                Config.SaveConfig(_config);
+                UpdateStatusIndicator(lblStatusHideActor, _config.SetHideActor);
+            }
 
-            if (InputManager.IsKeyPressed(Keys.F5))
+            // Handle other keybinds
+            if (InputManager.IsKeyPressed(_config.KeybindToggleEnemyDistance))
+            {
+                ToggleEnemyDistance();
+            }
+            if (InputManager.IsKeyPressed(_config.KeybindToggleMap))
                 ToggleMap();
-#if DEBUG
-            if (InputManager.IsKeyPressed(Keys.F6))
+            if (InputManager.IsKeyPressed(_config.KeybindToggleFullscreen))
+                ToggleFullscreen(FormBorderStyle is FormBorderStyle.Sizable);
+            if (InputManager.IsKeyPressed(_config.KeybindDumpNames))
                 DumpNames();
-#endif
         }
 
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             if (tabControl.SelectedIndex == 0)
             {
-                int zoomStep = 3;
-                if (e.Delta < 0)
-                    ZoomOut(zoomStep);
-                else if (e.Delta > 0)
-                    ZoomIn(zoomStep);
+                HandleMapZoom(e);
 
-                if (this._isFreeMapToggled && e.Delta < 0)
-                {
-                    var mousePos = this._mapCanvas.PointToClient(Cursor.Position);
-                    var mapParams = GetMapLocation();
-                    var mapMousePos = new SKPoint(
-                        mapParams.Bounds.Left + mousePos.X / mapParams.XScale,
-                        mapParams.Bounds.Top + mousePos.Y / mapParams.YScale
-                    );
-
-                    this.targetPanPosition = mapMousePos;
-                    if (!this.panTimer.Enabled)
-                        this.panTimer.Start();
-                }
                 return;
             }
             base.OnMouseWheel(e);
+        }
+
+        private void HandleMapZoom(MouseEventArgs e)
+        {
+            int zoomStep = 3;
+            if (e.Delta < 0)
+                ZoomOut(zoomStep);
+            else if (e.Delta > 0)
+                ZoomIn(zoomStep);
+
+            if (_isFreeMapToggled && e.Delta < 0)
+            {
+                var mousePos = _mapCanvas.PointToClient(Cursor.Position);
+                var mapParams = GetMapLocation();
+                var mapMousePos = new SKPoint(
+                    mapParams.Bounds.Left + mousePos.X / mapParams.XScale,
+                    mapParams.Bounds.Top + mousePos.Y / mapParams.YScale
+                );
+
+                _targetPanPosition = mapMousePos;
+                if (!_panTimer.Enabled)
+                    _panTimer.Start();
+            }
+        }
+
+        private void skMapCanvas_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (InGame && LocalPlayer is not null)
+            {
+                HandlePlayerHover(e);
+            }
+            else
+            {
+                ClearPlayerRefs();
+            }
+
+            if (_isDragging && _isFreeMapToggled)
+            {
+                HandleMapDragging(e);
+            }
+
+            HandlePOIHover(e);
+            _mapCanvas.Invalidate();
+        }
+
+        private void HandlePlayerHover(MouseEventArgs e)
+        {
+            var mouse = new Vector2(e.X, e.Y);
+            var players = AllActors?.Select(x => x.Value);
+            _closestPlayerToMouse = FindClosestObject(players, mouse, x => x.ZoomedPosition, 12 * _uiScale);
+        }
+
+        private void HandleMapDragging(MouseEventArgs e)
+        {
+            if (!_lastMousePosition.IsEmpty)
+            {
+                int dx = (int)((e.X - _lastMousePosition.X) * DRAG_SENSITIVITY);
+                int dy = (int)((e.Y - _lastMousePosition.Y) * DRAG_SENSITIVITY);
+
+                _targetPanPosition.X -= dx;
+                _targetPanPosition.Y -= dy;
+
+                if (!_panTimer.Enabled)
+                    _panTimer.Start();
+            }
+            _lastMousePosition = e.Location;
+        }
+
+        private void HandlePOIHover(MouseEventArgs e)
+        {
+            _hoveredPoi = null;
+            if (InGame && _pointsOfInterest.Count > 0)
+            {
+                var mapParams = GetMapLocation();
+                var mousePos = new SKPoint(e.X, e.Y);
+
+                _hoveredPoi = _pointsOfInterest.FirstOrDefault(poi =>
+                {
+                    var poiPos = poi.Position.ToMapPos(_selectedMap).ToZoomedPos(mapParams).GetPoint();
+                    return SKPoint.Distance(mousePos, poiPos) < 20 * _uiScale;
+                });
+            }
+        }
+
+        private void skMapCanvas_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left && _isFreeMapToggled)
+            {
+                _isDragging = true;
+                _lastMousePosition = e.Location;
+            }
+
+            if (e.Button == MouseButtons.Right && _hoveredPoi != null)
+            {
+                _pointsOfInterest.Remove(_hoveredPoi);
+                _hoveredPoi = null;
+                _mapCanvas.Invalidate();
+            }
+        }
+
+        private void skMapCanvas_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left && this.InGame && this.LocalPlayer is not null)
+            {
+                var mapParams = GetMapLocation();
+                var mouseX = e.X / mapParams.XScale + mapParams.Bounds.Left;
+                var mouseY = e.Y / mapParams.YScale + mapParams.Bounds.Top;
+
+                var worldX = (mouseX - _selectedMap.ConfigFile.X) / _selectedMap.ConfigFile.Scale;
+                var worldY = (mouseY - _selectedMap.ConfigFile.Y) / _selectedMap.ConfigFile.Scale;
+                var worldZ = this.LocalPlayer.Position.Z;
+
+                var poiPosition = new Vector3(worldX, worldY, worldZ);
+
+                AddPointOfInterest(poiPosition, "POI");
+
+                _mapCanvas.Invalidate();
+            }
+        }
+
+        private void skMapCanvas_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (_isDragging)
+            {
+                _isDragging = false;
+                _lastMousePosition = e.Location;
+            }
+        }
+
+        private void skMapCanvas_PaintSurface(object sender, SKPaintGLSurfaceEventArgs e)
+        {
+            try
+            {
+                var canvas = e.Surface.Canvas;
+                canvas.Clear();
+                UpdateWindowTitle();
+
+                if (IsReadyToRender())
+                {
+                    lock (_renderLock)
+                    {
+                        var deadMarkers = new List<SKPoint>();
+                        var projectileAAs = new List<UActor>();
+
+                        DrawMap(canvas);
+                        DrawActors(canvas, deadMarkers, projectileAAs);
+                        DrawPOIs(canvas);
+                        DrawToolTips(canvas);
+                        DrawTopMost(canvas, deadMarkers, projectileAAs);
+                    }
+                }
+                else
+                {
+                    DrawStatusText(canvas);
+                }
+
+                canvas.Flush();
+            }
+            catch { }
+        }
+
+        private void ticketsPanel_Paint(object sender, PaintEventArgs e)
+        {
+            if (Memory.GameStatus != GameStatus.InGame || Memory._game == null)
+            {
+                // Reset when not in game
+                _lastFriendlyTickets = 0;
+                _lastEnemyTickets = 0;
+                _lastKills = 0;
+                _lastWoundeds = 0;
+                return;
+            }
+
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+            string displayText = $"Friendly: {_lastFriendlyTickets}  |  Enemy: {_lastEnemyTickets}  |  K: {_lastKills}  |  W: {_lastWoundeds}";
+
+            using (var font = new Font("Arial", 9f, FontStyle.Bold))
+            using (var format = new StringFormat())
+            {
+                format.Alignment = StringAlignment.Center;
+                format.LineAlignment = StringAlignment.Center;
+
+                RectangleF rect = new RectangleF(
+                    0,
+                    0,
+                    ticketsPanel.Width,
+                    ticketsPanel.Height
+                );
+
+                g.DrawString(
+                    displayText,
+                    font,
+                    Brushes.WhiteSmoke,
+                    rect,
+                    format
+                );
+            }
+        }
+
+        private void btnToggleMap_Click(object sender, EventArgs e)
+        {
+            ToggleMap();
         }
         #endregion
 
@@ -257,16 +632,11 @@ namespace squad_dma
             if (!btnToggleMap.Enabled)
                 return false;
 
-            if (_mapSelectionIndex == _maps.Count - 1)
-                _mapSelectionIndex = 0; // Start over when end of maps reached
-            else
-                _mapSelectionIndex++; // Move onto next map
-
+            _mapSelectionIndex = (_mapSelectionIndex + 1) % _maps.Count;
             tabRadar.Text = $"Radar ({_maps[_mapSelectionIndex].Name})";
-            _mapChangeTimer.Restart(); // Start delay
+            _mapChangeTimer.Restart();
             ClearPointsOfInterest();
             Program.Log("Toggled Map");
-
             return true;
         }
 
@@ -318,12 +688,7 @@ namespace squad_dma
                 var name = Path.GetFileNameWithoutExtension(config.Name);
                 var mapConfig = MapConfig.LoadFromFile(config.FullName);
                 var map = new Map(name.ToUpper(), mapConfig, config.FullName);
-
-                map.ConfigFile.MapLayers = map.ConfigFile
-                    .MapLayers
-                    .OrderBy(x => x.MinHeight)
-                    .ToList();
-
+                map.ConfigFile.MapLayers = map.ConfigFile.MapLayers.OrderBy(x => x.MinHeight).ToList();
                 _maps.Add(map);
             }
         }
@@ -336,7 +701,6 @@ namespace squad_dma
             chkShowEnemyDistance.CheckedChanged += ChkShowEnemyDistance_CheckedChanged;
             trkAimLength.Value = _config.PlayerAimLineLength;
             trkUIScale.Value = _config.UIScale;
-
             // ESP
             chkEnableEsp.Checked = _config.EnableEsp;
             chkEnableBones.Checked = _config.EspBones;
@@ -354,11 +718,21 @@ namespace squad_dma
             txtFirstScopeMag.Text = _config.FirstScopeMagnification.ToString("F1");
             txtSecondScopeMag.Text = _config.SecondScopeMagnification.ToString("F1");
             txtThirdScopeMag.Text = _config.ThirdScopeMagnification.ToString("F1");
+
+            #endregion
+
+            #region Local Soldier Features
             // Write 
             grpWriteSettings.Visible = true;
             chkEnableNoRecoil.Checked = _config.NoRecoil;
             chkEnableNoSway.Checked = _config.NoSway;
             chkEnableNoCameraShake.Checked = _config.NoCameraShake;
+            chkDisableSuppression.Checked = _config.DisableSuppression;
+            chkSetInteractionDistances.Checked = _config.SetInteractionDistances;
+            chkAllowShootingInMainBase.Checked = _config.AllowShootingInMainBase;
+            chkSpeedHack.Checked = _config.SetSpeedHack;
+            chkAirStuck.Checked = _config.SetAirStuck;
+            chkHideActor.Checked = _config.SetHideActor;
             #endregion
             #endregion
             InitiateFont();
@@ -467,7 +841,9 @@ namespace squad_dma
         }
 
         private void TabControl_SelectedIndexChanged(object sender, EventArgs e)
-        { }
+        {
+            // Handle tab control selection changes if needed
+        }
         #endregion
 
         #region Radar Tab
@@ -506,11 +882,28 @@ namespace squad_dma
 
         private void UpdateTicketsDisplay()
         {
-            if (Memory.GameStatus != Game.GameStatus.InGame || Memory._game == null)
+            if (Memory.GameStatus != GameStatus.InGame || Memory._game == null)
                 return;
 
-            var (friendly, enemy) = Memory._game.GetTeamTickets();
-            var (kills, woundeds) = Memory._game.GetStats();
+            var gameTickets = Memory._game.GameTickets;
+            int friendly = 0;
+            int enemy = 0;
+
+            if (gameTickets != null)
+            {
+                friendly = gameTickets.FriendlyTickets;
+                enemy = gameTickets.EnemyTickets;
+            }
+
+            var gameStats = Memory._game.GameStats;
+            int kills = 0;
+            int woundeds = 0;
+
+            if (gameStats != null)
+            {
+                kills = gameStats.Kills;
+                woundeds = gameStats.Woundeds;
+            }
 
             if (friendly != _lastFriendlyTickets ||
                 enemy != _lastEnemyTickets ||
@@ -527,13 +920,13 @@ namespace squad_dma
 
         private void HandleGameStateChange()
         {
-            if (Memory.GameStatus != Game.GameStatus.InGame || Memory._game == null)
+            if (Memory.GameStatus != GameStatus.InGame || Memory._game == null)
             {
                 _lastFriendlyTickets = 0;
                 _lastEnemyTickets = 0;
                 ticketsPanel.Invalidate();
             }
-            else if (Memory.GameStatus == Game.GameStatus.InGame &&
+            else if (Memory.GameStatus == GameStatus.InGame &&
                     (_lastFriendlyTickets == 0 && _lastEnemyTickets == 0))
             {
                 UpdateTicketsDisplay();
@@ -542,37 +935,17 @@ namespace squad_dma
 
         private void UpdateSelectedMap()
         {
-            string currentMap = this.MapName;
-
+            string currentMap = MapName;
             if (_selectedMap is null || !_selectedMap.ConfigFile.MapID.Any(id => id.Equals(currentMap, StringComparison.OrdinalIgnoreCase)))
             {
                 var selectedMap = _maps.FirstOrDefault(x => x.ConfigFile.MapID.Any(id => id.Equals(currentMap, StringComparison.OrdinalIgnoreCase)));
-
                 if (selectedMap is not null)
                 {
                     _selectedMap = selectedMap;
-
                     CleanupLoadedBitmaps();
                     ClearPointsOfInterest();
                     LoadMapBitmaps();
                 }
-                else
-                {
-                    Console.WriteLine($"No matching map found for: {currentMap}"); // Debug logging
-                }
-            }
-        }
-
-        private void CleanupLoadedBitmaps()
-        {
-            if (_loadedBitmaps is not null)
-            {
-                Parallel.ForEach(_loadedBitmaps, bitmap =>
-                {
-                    bitmap?.Dispose();
-                });
-
-                _loadedBitmaps = null;
             }
         }
 
@@ -587,11 +960,9 @@ namespace squad_dma
                 {
                     try
                     {
-                        using (var stream = File.Open(mapLayer.Filename, FileMode.Open, FileAccess.Read))
-                        {
-                            _loadedBitmaps[mapLayers.IndexOf(mapLayer)] = SKBitmap.Decode(stream);
-                            _loadedBitmaps[mapLayers.IndexOf(mapLayer)].SetImmutable();
-                        }
+                        using var stream = File.Open(mapLayer.Filename, FileMode.Open, FileAccess.Read);
+                        _loadedBitmaps[mapLayers.IndexOf(mapLayer)] = SKBitmap.Decode(stream);
+                        _loadedBitmaps[mapLayers.IndexOf(mapLayer)].SetImmutable();
                     }
                     catch (Exception ex)
                     {
@@ -599,6 +970,15 @@ namespace squad_dma
                     }
                 }
             });
+        }
+
+        private void CleanupLoadedBitmaps()
+        {
+            if (_loadedBitmaps is not null)
+            {
+                Parallel.ForEach(_loadedBitmaps, bitmap => bitmap?.Dispose());
+                _loadedBitmaps = null;
+            }
         }
 
         private bool IsReadyToRender()
@@ -686,10 +1066,9 @@ namespace squad_dma
 
         private void DrawMap(SKCanvas canvas)
         {
-            if (grpMapSetup.Visible) // Print coordinates (to make it easy to setup JSON configs)
+            if (grpMapSetup.Visible)
             {
-                var localPlayer = this.LocalPlayer;
-                var localPlayerPos = localPlayer.Position + AbsoluteLocation;
+                var localPlayerPos = LocalPlayer.Position + AbsoluteLocation;
                 grpMapSetup.Text = $"Map Setup - X,Y,Z: {localPlayerPos.X}, {localPlayerPos.Y}, {localPlayerPos.Z}";
             }
             else if (grpMapSetup.Text != "Map Setup" && !grpMapSetup.Visible)
@@ -697,10 +1076,8 @@ namespace squad_dma
                 grpMapSetup.Text = "Map Setup";
             }
 
-            // Prepare to draw Game Map
             var mapParams = GetMapLocation();
-
-            var mapCanvasBounds = new SKRect() // Drawing Destination
+            var mapCanvasBounds = new SKRect
             {
                 Left = _mapCanvas.Left,
                 Right = _mapCanvas.Right,
@@ -708,7 +1085,6 @@ namespace squad_dma
                 Bottom = _mapCanvas.Bottom
             };
 
-            // Draw Game Map
             canvas.DrawBitmap(
                 _loadedBitmaps[mapParams.MapLayerIndex],
                 mapParams.Bounds,
@@ -719,87 +1095,75 @@ namespace squad_dma
 
         private void DrawActors(SKCanvas canvas, List<SKPoint> deadMarkers, List<UActor> projectileAAs)
         {
-            var localPlayer = this.LocalPlayer;
+            if (!InGame || LocalPlayer is null)
+                return;
 
-            if (this.InGame && localPlayer is not null)
+            var allPlayers = AllActors?.Select(x => x.Value);
+            if (allPlayers is null)
+                return;
+
+            var activeProjectiles = allPlayers.Where(a => a.ActorType == ActorType.ProjectileAA).ToList();
+            var removedProjectiles = _aaProjectileOrigins.Keys.Except(activeProjectiles).ToList();
+            foreach (var projectile in removedProjectiles)
             {
-                var allPlayers = this.AllActors?.Select(x => x.Value);
+                _aaProjectileOrigins.Remove(projectile);
+            }
 
-                if (allPlayers is not null)
+            var localPlayerPos = LocalPlayer.Position + AbsoluteLocation;
+            var localPlayerMapPos = localPlayerPos.ToMapPos(_selectedMap);
+            var mapParams = GetMapLocation();
+            var localPlayerZoomedPos = localPlayerMapPos.ToZoomedPos(mapParams);
+
+            localPlayerZoomedPos.DrawPlayerMarker(canvas, LocalPlayer, trkAimLength.Value);
+
+            foreach (var actor in allPlayers)
+            {
+                var actorPos = actor.Position + AbsoluteLocation;
+                if (Math.Abs(actorPos.X - AbsoluteLocation.X) + Math.Abs(actorPos.Y - AbsoluteLocation.Y) + Math.Abs(actorPos.Z - AbsoluteLocation.Z) < 1.0)
+                    continue;
+
+                var actorMapPos = actorPos.ToMapPos(_selectedMap);
+                var actorZoomedPos = actorMapPos.ToZoomedPos(mapParams);
+                actor.ZoomedPosition = new Vector2(actorZoomedPos.X, actorZoomedPos.Y);
+
+                if (actor.ActorType == ActorType.Player && !actor.IsAlive)
                 {
-                    var activeProjectiles = allPlayers
-                        .Where(a => a.ActorType == ActorType.ProjectileAA)
-                        .ToList();
+                    HandleDeadPlayer(canvas, actor, deadMarkers, mapParams);
+                    continue;
+                }
 
-                    var removedProjectiles = _aaProjectileOrigins.Keys
-                        .Except(activeProjectiles)
-                        .ToList();
+                if (actor.ActorType != ActorType.ProjectileAA)
+                {
+                    int aimlineLength = actor == LocalPlayer ? 0 : 15;
+                    DrawActor(canvas, actor, actorZoomedPos, aimlineLength, localPlayerMapPos);
+                }
 
-                    foreach (var projectile in removedProjectiles)
-                    {
-                        _aaProjectileOrigins.Remove(projectile);
-                    }
-
-                    var localPlayerPos = localPlayer.Position + AbsoluteLocation;
-                    var localPlayerMapPos = localPlayerPos.ToMapPos(_selectedMap);
-                    var mapParams = GetMapLocation();
-
-                    var localPlayerZoomedPos = localPlayerMapPos.ToZoomedPos(mapParams);
-                    localPlayerZoomedPos.DrawPlayerMarker(canvas, localPlayer, trkAimLength.Value);
-
-                    foreach (var actor in allPlayers)
-                    {
-                        var actorPos = actor.Position + AbsoluteLocation;
-
-                        if (Math.Abs(actorPos.X - AbsoluteLocation.X) + Math.Abs(actorPos.Y - AbsoluteLocation.Y) + Math.Abs(actorPos.Z - AbsoluteLocation.Z) < 1.0)
-                            continue;
-
-                        var actorMapPos = actorPos.ToMapPos(_selectedMap);
-                        var actorZoomedPos = actorMapPos.ToZoomedPos(mapParams);
-
-                        actor.ZoomedPosition = new Vector2()
-                        {
-                            X = actorZoomedPos.X,
-                            Y = actorZoomedPos.Y
-                        };
-
-                        if (actor.ActorType == ActorType.Player && !actor.IsAlive)
-                        {
-                            if (actor.DeathPosition != Vector3.Zero)
-                            {
-                                var timeSinceDeath = DateTime.Now - actor.TimeOfDeath;
-                                if (timeSinceDeath.TotalSeconds <= 8)
-                                {
-                                    var deathPosAdjusted = actor.DeathPosition + AbsoluteLocation;
-                                    var deathPosMap = deathPosAdjusted.ToMapPos(_selectedMap);
-                                    var deathZoomedPos = deathPosMap.ToZoomedPos(mapParams);
-                                    deadMarkers.Add(deathZoomedPos.GetPoint());
-                                }
-                                else
-                                {
-                                    actor.DeathPosition = Vector3.Zero;
-                                    actor.TimeOfDeath = DateTime.MinValue;
-                                }
-                            }
-                            continue;
-                        }
-
-                        if (actor.ActorType != ActorType.ProjectileAA)
-                        {
-                            int aimlineLength = actor == localPlayer ? 0 : 15;
-                            DrawActor(canvas, actor, actorZoomedPos, aimlineLength, localPlayerMapPos);
-                        }
-
-                        if (actor.ActorType == ActorType.ProjectileAA)
-                        {
-                            projectileAAs.Add(actor);
-                        }
-                    }
+                if (actor.ActorType == ActorType.ProjectileAA)
+                {
+                    projectileAAs.Add(actor);
                 }
             }
         }
 
-        private Dictionary<UActor, Vector3> _aaProjectileOrigins = new Dictionary<UActor, Vector3>();
+        private void HandleDeadPlayer(SKCanvas canvas, UActor actor, List<SKPoint> deadMarkers, MapParameters mapParams)
+        {
+            if (actor.DeathPosition != Vector3.Zero)
+            {
+                var timeSinceDeath = DateTime.Now - actor.TimeOfDeath;
+                if (timeSinceDeath.TotalSeconds <= 8)
+                {
+                    var deathPosAdjusted = actor.DeathPosition + AbsoluteLocation;
+                    var deathPosMap = deathPosAdjusted.ToMapPos(_selectedMap);
+                    var deathZoomedPos = deathPosMap.ToZoomedPos(mapParams);
+                    deadMarkers.Add(deathZoomedPos.GetPoint());
+                }
+                else
+                {
+                    actor.DeathPosition = Vector3.Zero;
+                    actor.TimeOfDeath = DateTime.MinValue;
+                }
+            }
+        }
 
         private void DrawActor(SKCanvas canvas, UActor actor, MapPosition actorZoomedPos, int aimlineLength, MapPosition localPlayerMapPos)
         {
@@ -903,7 +1267,7 @@ namespace squad_dma
 
         private void DrawAdmin(SKCanvas canvas, UActor admin, MapPosition position)
         {
-            int adminAimlineLength = 20;
+            int adminAimlineLength = 40;
 
             position.DrawPlayerMarker(canvas, admin, adminAimlineLength, SKPaints.DefaultTextColor);
 
@@ -1223,42 +1587,17 @@ namespace squad_dma
 
         private void DrawStatusText(SKCanvas canvas)
         {
-            bool isReady = this.Ready;
-            bool inGame = this.InGame;
-            var localPlayer = this.LocalPlayer;
-            var selectedMap = this._selectedMap;
+            string statusText = !Ready ? "Game Process Not Running" :
+                              !InGame ? "Waiting for Game Start..." :
+                              LocalPlayer is null ? "Cannot find LocalPlayer" :
+                              _selectedMap is null ? "Loading Map" : null;
 
-            string statusText;
-            if (!isReady)
+            if (statusText != null)
             {
-                statusText = "Game Process Not Running";
+                var centerX = _mapCanvas.Width / 2;
+                var centerY = _mapCanvas.Height / 2;
+                canvas.DrawText(statusText, centerX, centerY, SKPaints.TextRadarStatus);
             }
-            else if (!inGame)
-            {
-                statusText = "Waiting for Game Start...";
-
-                if (selectedMap is not null)
-                {
-                    this._selectedMap = null;
-                }
-            }
-            else if (localPlayer is null)
-            {
-                statusText = "Cannot find LocalPlayer";
-            }
-            else if (selectedMap is null)
-            {
-                statusText = "Loading Map";
-            }
-            else
-            {
-                return; // No status text to draw
-            }
-
-            var centerX = _mapCanvas.Width / 2;
-            var centerY = _mapCanvas.Height / 2;
-
-            canvas.DrawText(statusText, centerX, centerY, SKPaints.TextRadarStatus);
         }
 
         private void ClearPlayerRefs()
@@ -1289,8 +1628,8 @@ namespace squad_dma
         private void PanTimer_Tick(object sender, EventArgs e)
         {
             var panDifference = new SKPoint(
-                this.targetPanPosition.X - this._mapPanPosition.X,
-                this.targetPanPosition.Y - this._mapPanPosition.Y
+                this._targetPanPosition.X - this._mapPanPosition.X,
+                this._targetPanPosition.Y - this._mapPanPosition.Y
             );
 
             if (panDifference.Length > 0.1)
@@ -1300,7 +1639,7 @@ namespace squad_dma
             }
             else
             {
-                this.panTimer.Stop();
+                this._panTimer.Stop();
             }
         }
 
@@ -1405,193 +1744,6 @@ namespace squad_dma
                 Name = name;
             }
         }
-
-        private void skMapCanvas_MouseMove(object sender, MouseEventArgs e)
-        {
-
-            // Handle player hover and dragging
-            if (this.InGame && this.LocalPlayer is not null)
-            {
-                var mouse = new Vector2(e.X, e.Y);
-
-                // Find the closest player to the mouse cursor
-                var players = this.AllActors?.Select(x => x.Value);
-                _closestPlayerToMouse = FindClosestObject(players, mouse, x => x.ZoomedPosition, 12 * _uiScale);
-            }
-            else if (this.InGame)
-            {
-                ClearPlayerRefs();
-            }
-
-            // Handle map dragging
-            if (this._isDragging && this._isFreeMapToggled)
-            {
-                if (!this._lastMousePosition.IsEmpty)
-                {
-                    int dx = e.X - this._lastMousePosition.X;
-                    int dy = e.Y - this._lastMousePosition.Y;
-
-                    dx = (int)(dx * DRAG_SENSITIVITY);
-                    dy = (int)(dy * DRAG_SENSITIVITY);
-
-                    this.targetPanPosition.X -= dx;
-                    this.targetPanPosition.Y -= dy;
-
-                    if (!this.panTimer.Enabled)
-                        this.panTimer.Start();
-                }
-
-                this._lastMousePosition = e.Location;
-            }
-
-            // Handle POI hover
-            _hoveredPoi = null;
-            if (InGame && _pointsOfInterest.Count > 0)
-            {
-                var mapParams = GetMapLocation();
-                var mousePos = new SKPoint(e.X, e.Y);
-
-                foreach (var poi in _pointsOfInterest)
-                {
-                    var poiPos = poi.Position.ToMapPos(_selectedMap).ToZoomedPos(mapParams).GetPoint();
-                    if (SKPoint.Distance(mousePos, poiPos) < 20 * _uiScale) // 20px hover threshold
-                    {
-                        _hoveredPoi = poi;
-                        break;
-                    }
-                }
-            }
-
-            _mapCanvas.Invalidate();
-        }
-
-        private void skMapCanvas_MouseDown(object sender, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left && this._isFreeMapToggled)
-            {
-                this._isDragging = true;
-                this._lastMousePosition = e.Location;
-            }
-
-            // Remove POI on right-click (hover-based removal)
-            if (e.Button == MouseButtons.Right && _hoveredPoi != null)
-            {
-                _pointsOfInterest.Remove(_hoveredPoi);
-                _hoveredPoi = null;
-                _mapCanvas.Invalidate();
-            }
-        }
-
-        private void skMapCanvas_MouseDoubleClick(object sender, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left && this.InGame && this.LocalPlayer is not null)
-            {
-                var mapParams = GetMapLocation();
-                var mouseX = e.X / mapParams.XScale + mapParams.Bounds.Left;
-                var mouseY = e.Y / mapParams.YScale + mapParams.Bounds.Top;
-
-                var worldX = (mouseX - _selectedMap.ConfigFile.X) / _selectedMap.ConfigFile.Scale;
-                var worldY = (mouseY - _selectedMap.ConfigFile.Y) / _selectedMap.ConfigFile.Scale;
-                var worldZ = this.LocalPlayer.Position.Z;
-
-                var poiPosition = new Vector3(worldX, worldY, worldZ);
-
-                AddPointOfInterest(poiPosition, "POI");
-
-                _mapCanvas.Invalidate();
-            }
-        }
-
-        private void skMapCanvas_MouseUp(object sender, MouseEventArgs e)
-        {
-            if (this._isDragging)
-            {
-                this._isDragging = false;
-                this._lastMousePosition = e.Location;
-            }
-        }
-
-        private void skMapCanvas_PaintSurface(object sender, SKPaintGLSurfaceEventArgs e)
-        {
-            try
-            {
-                SKCanvas canvas = e.Surface.Canvas;
-                canvas.Clear();
-
-                UpdateWindowTitle();
-
-                if (IsReadyToRender())
-                {
-                    lock (_renderLock)
-                    {
-                        List<SKPoint> deadMarkers = new();
-                        List<UActor> projectileAAs = new();
-
-                        DrawMap(canvas);
-                        DrawActors(canvas, deadMarkers, projectileAAs);
-                        DrawPOIs(canvas);
-                        DrawToolTips(canvas);
-                        DrawTopMost(canvas, deadMarkers, projectileAAs);
-                    }
-                }
-                else
-                {
-                    DrawStatusText(canvas);
-                }
-
-                canvas.Flush();
-            }
-            catch { }
-        }
-
-
-        private void ticketsPanel_Paint(object sender, PaintEventArgs e)
-        {
-            if (Memory.GameStatus != Game.GameStatus.InGame || Memory._game == null)
-            {
-                // Reset when not in game
-                _lastFriendlyTickets = 0;
-                _lastEnemyTickets = 0;
-                _lastKills = 0;
-                _lastWoundeds = 0;
-                return;
-            }
-
-            var g = e.Graphics;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-            string displayText = $"Friendly: {_lastFriendlyTickets}  |  Enemy: {_lastEnemyTickets}  |  K: {_lastKills}  |  W: {_lastWoundeds}";
-
-            using (var font = new Font("Arial", 9f, FontStyle.Bold))
-            using (var format = new StringFormat())
-            {
-                format.Alignment = StringAlignment.Center;
-                format.LineAlignment = StringAlignment.Center;
-
-                RectangleF rect = new RectangleF(
-                    0,
-                    0,
-                    ticketsPanel.Width,
-                    ticketsPanel.Height
-                );
-
-                g.DrawString(
-
-                    displayText,
-
-                    font,
-                    Brushes.WhiteSmoke,
-                    rect,
-                    format
-                );
-            }
-        }
-
-        private void btnToggleMap_Click(object sender, EventArgs e)
-        {
-            ToggleMap();
-        }
         #endregion
         #endregion
 
@@ -1636,21 +1788,15 @@ namespace squad_dma
 
         private void btnDumpNames_Click(object sender, EventArgs e)
         {
-            DumpNames();
-        }
-
-        private bool ToggleEnemyDistance()
-        {
-            _config.ShowEnemyDistance = !_config.ShowEnemyDistance;
-            chkShowEnemyDistance.Checked = _config.ShowEnemyDistance;
-            _mapCanvas.Invalidate();
-            return true;
+            // Remove the old functionality and just dump names
+            Memory._game.LogVehicles(force: true);
         }
 
         private void ChkShowEnemyDistance_CheckedChanged(object sender, EventArgs e)
         {
             _config.ShowEnemyDistance = chkShowEnemyDistance.Checked;
             _mapCanvas.Invalidate();
+            Config.SaveConfig(_config);
         }
 
         private void trkUIScale_Scroll(object sender, EventArgs e)
@@ -1660,6 +1806,73 @@ namespace squad_dma
 
             InitiateUIScaling();
         }
+
+        private void ChkDisableSuppression_CheckedChanged(object sender, EventArgs e)
+        {
+            _config.DisableSuppression = chkDisableSuppression.Checked;
+            Memory._game?.SetSuppression(chkDisableSuppression.Checked);
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkSetInteractionDistances_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!InGame) return;
+            if (!chkSetInteractionDistances.Checked)
+            {
+                _config.SetInteractionDistances = false;
+                Memory._game?.SetInteractionDistances(false);
+                UpdateStatusIndicator(lblStatusSetInteractionDistances, false);
+            }
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkAllowShootingInMainBase_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!InGame) return;
+            if (!chkAllowShootingInMainBase.Checked)
+            {
+                _config.AllowShootingInMainBase = false;
+                Memory._game?.SetShootingInMainBase(false);
+                UpdateStatusIndicator(lblStatusAllowShootingInMainBase, false);
+            }
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkSetTimeDilation_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!InGame) return;
+            if (!chkSpeedHack.Checked)
+            {
+                _config.SetSpeedHack = false;
+                Memory._game?.SetSpeedHack(false);
+                UpdateStatusIndicator(lblStatusSpeedHack, false);
+            }
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkAirStuck_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!InGame) return;
+            if (!chkAirStuck.Checked)
+            {
+                _config.SetAirStuck = false;
+                Memory._game?.SetAirStuck(false);
+                UpdateStatusIndicator(lblStatusAirStuck, false);
+            }
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkHideActor_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!InGame) return;
+            if (!chkHideActor.Checked)
+            {
+                _config.SetHideActor = false;
+                Memory._game?.SetHideActor(false);
+                UpdateStatusIndicator(lblStatusHideActor, false);
+            }
+            Config.SaveConfig(_config);
+        }
         #endregion
         #endregion
         #endregion
@@ -1667,12 +1880,127 @@ namespace squad_dma
 
         private void grpMapSetup_Enter(object sender, EventArgs e)
         {
-
         }
 
         private void trkAimLength_Scroll(object sender, EventArgs e)
         {
+        }
 
+        private void lblAimline_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void StartKeybindCapture(Button button)
+        {
+            if (_isWaitingForKey) return;
+            _isWaitingForKey = true;
+            _currentKeybindButton = button;
+            _currentKeybind = Keys.None;
+            button.Text = "Press any key...";
+        }
+
+        private void EndKeybindCapture(Keys key)
+        {
+            if (!_isWaitingForKey || _currentKeybindButton == null) return;
+
+            _currentKeybind = key;
+            _currentKeybindButton.Text = key == Keys.None ? "None" : key.ToString();
+            _isWaitingForKey = false;
+
+            if (_currentKeybindButton == btnKeybindToggleFullscreen)
+            {
+                _config.KeybindToggleFullscreen = key;
+            }
+            else if (_currentKeybindButton == btnKeybindToggleMap)
+            {
+                _config.KeybindToggleMap = key;
+            }
+            else if (_currentKeybindButton == btnKeybindToggleEnemyDistance)
+            {
+                _config.KeybindToggleEnemyDistance = key;
+            }
+            else if (_currentKeybindButton == btnKeybindSetInteractionDistances)
+            {
+                _config.KeybindSetInteractionDistances = key;
+            }
+            else if (_currentKeybindButton == btnKeybindAllowShootingInMainBase)
+            {
+                _config.KeybindAllowShootingInMainBase = key;
+            }
+            else if (_currentKeybindButton == btnKeybindSpeedHack)
+            {
+                _config.KeybindSpeedHack = key;
+            }
+            else if (_currentKeybindButton == btnKeybindAirStuck)
+            {
+                _config.KeybindAirStuck = key;
+            }
+            else if (_currentKeybindButton == btnKeybindHideActor)
+            {
+                _config.KeybindHideActor = key;
+            }
+            else if (_currentKeybindButton == btnKeybindDumpNames)
+            {
+                _config.KeybindDumpNames = key;
+            }
+            else if (_currentKeybindButton == btnKeybindZoomIn)
+            {
+                _config.KeybindZoomIn = key;
+            }
+            else if (_currentKeybindButton == btnKeybindZoomOut)
+            {
+                _config.KeybindZoomOut = key;
+            }
+
+            Config.SaveConfig(_config);
+            _currentKeybindButton = null;
+        }
+
+        // Keybind button click handlers
+        private void BtnKeybindSetInteractionDistances_Click(object sender, EventArgs e)
+        {
+            StartKeybindCapture(btnKeybindSetInteractionDistances);
+        }
+
+        private void BtnKeybindAllowShootingInMainBase_Click(object sender, EventArgs e)
+        {
+            StartKeybindCapture(btnKeybindAllowShootingInMainBase);
+        }
+
+        private void BtnKeybindSpeedHack_Click(object sender, EventArgs e)
+        {
+            StartKeybindCapture(btnKeybindSpeedHack);
+        }
+
+        private void BtnKeybindAirStuck_Click(object sender, EventArgs e)
+        {
+            StartKeybindCapture(btnKeybindAirStuck);
+        }
+
+        private void BtnKeybindHideActor_Click(object sender, EventArgs e)
+        {
+            StartKeybindCapture(btnKeybindHideActor);
+        }
+
+        private void BtnKeybindToggleEnemyDistance_Click(object sender, EventArgs e)
+        {
+            StartKeybindCapture(btnKeybindToggleEnemyDistance);
+        }
+
+        private void BtnKeybindToggleMap_Click(object sender, EventArgs e)
+        {
+            StartKeybindCapture(btnKeybindToggleMap);
+        }
+
+        private void BtnKeybindToggleFullscreen_Click(object sender, EventArgs e)
+        {
+            StartKeybindCapture(btnKeybindToggleFullscreen);
+        }
+
+        private void BtnKeybindDumpNames_Click(object sender, EventArgs e)
+        {
+            StartKeybindCapture(btnKeybindDumpNames);
         }
 
         private void ChkEnableNoRecoilCheckedChanged(object sender, EventArgs e)

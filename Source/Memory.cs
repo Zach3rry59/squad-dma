@@ -31,7 +31,7 @@ namespace squad_dma
         private static readonly Stopwatch _processCheckTimer = new();
         private const int PROCESS_CHECK_INTERVAL = 2000;
 
-        public static Game.GameStatus GameStatus = Game.GameStatus.NotFound;
+        public static GameStatus GameStatus = GameStatus.NotFound;
 
         #region Getters
         public static int Ticks
@@ -301,7 +301,7 @@ namespace squad_dma
                     bool firstAttempt = true;
                     while (!Memory.GetPid() || !Memory.GetModuleBase())
                     {
-                        Memory.GameStatus = Game.GameStatus.NotFound;
+                        Memory.GameStatus = GameStatus.NotFound;
                         _syncProcessRunning.Reset();
                         var delay = firstAttempt ? 15000 : 5000;
                         Program.Log($"Squad startup failed, trying again in {delay / 1000} seconds...");
@@ -319,11 +319,11 @@ namespace squad_dma
                         try
                         {
                             Program.Log("Ready -- Waiting for game...");
-                            Memory.GameStatus = Game.GameStatus.Menu;
+                            Memory.GameStatus = GameStatus.Menu;
                             Memory._ready = true;
                             Memory._game.WaitForGame();
 
-                            while (Memory.GameStatus == Game.GameStatus.InGame && _running)
+                            while (Memory.GameStatus == GameStatus.InGame && _running)
                             {
                                 // Periodic process verification
                                 if (_processCheckTimer.ElapsedMilliseconds > PROCESS_CHECK_INTERVAL)
@@ -603,17 +603,17 @@ namespace squad_dma
         /// <exception cref="DMAException"></exception>
         public static void WriteValue<T>(ulong addr, T value)
         where T : unmanaged
+        {
+            try
             {
-                try
-                {
-                    if (!_process.MemWriteStruct(addr, value))
-                        throw new Exception("Memory Write Failed!");
-                }
-                catch (Exception ex)
-                {
-                    throw new DMAException($"[DMA] ERROR writing {typeof(T)} value at 0x{addr.ToString("X")}", ex);
-                }
+                if (!_process.MemWriteStruct(addr, value))
+                    throw new Exception("Memory Write Failed!");
             }
+            catch (Exception ex)
+            {
+                throw new DMAException($"[DMA] ERROR writing {typeof(T)} value at 0x{addr.ToString("X")}", ex);
+            }
+        }
 
         /// <summary>
         /// Performs multiple memory write operations in a single call
@@ -666,7 +666,7 @@ namespace squad_dma
         }
         private static void HandleRestart()
         {
-            Memory.GameStatus = Game.GameStatus.Menu;
+            Memory.GameStatus = GameStatus.Menu;
             Program.Log("Restarting game... getting fresh GameWorld instance");
             Memory._restart = false;
         }

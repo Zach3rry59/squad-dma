@@ -260,11 +260,10 @@ namespace squad_dma
             if (!InputManager.keyboardInitialized || InputManager.gafAsyncKeyStateExport < 0x7FFFFFFFFFFF)
                 return false;
 
-            if (DateTime.UtcNow.Ticks - InputManager.lastUpdateTicks > TimeSpan.TicksPerMillisecond)
+            if (DateTime.UtcNow.Ticks - InputManager.lastUpdateTicks > TimeSpan.TicksPerMillisecond * 5)
                 InputManager.UpdateKeys();
 
             var virtualKeyCode = (int)key;
-
             return InputManager.pressedKeys.ContainsKey(virtualKeyCode);
         }
 
@@ -273,13 +272,14 @@ namespace squad_dma
             if (!InputManager.keyboardInitialized || InputManager.gafAsyncKeyStateExport < 0x7FFFFFFFFFFF)
                 return false;
 
-            if (DateTime.UtcNow.Ticks - InputManager.lastUpdateTicks > TimeSpan.TicksPerMillisecond)
+            if (DateTime.UtcNow.Ticks - InputManager.lastUpdateTicks > TimeSpan.TicksPerMillisecond * 5)
                 InputManager.UpdateKeys();
 
             var virtualKeyCode = (int)key;
+            var currentState = (InputManager.currentStateBitmap[(virtualKeyCode * 2 / 8)] & 1 << virtualKeyCode % 4 * 2) != 0;
+            var previousState = (InputManager.previousStateBitmap[(virtualKeyCode * 2 / 8)] & 1 << virtualKeyCode % 4 * 2) != 0;
 
-            return InputManager.pressedKeys.ContainsKey(virtualKeyCode) &&
-                   (InputManager.previousStateBitmap[(virtualKeyCode * 2 / 8)] & (1 << (virtualKeyCode % 4 * 2))) == 0;
+            return currentState && !previousState;
         }
     }
 }

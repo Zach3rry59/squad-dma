@@ -68,4 +68,10 @@ namespace squad_dma {
         SD_Taliban, 
         SD_Ukraine
     }
+    public enum GameStatus {
+        NotFound,
+        Menu,
+        InGame,
+    }
+
 }
