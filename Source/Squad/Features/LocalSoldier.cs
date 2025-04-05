@@ -101,6 +101,7 @@ namespace squad_dma.Source.Squad.Features
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.MaxSuppressionPercentage, _originalMaxSuppressionPercentage);
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.SuppressionMultiplier, _originalSuppressionMultiplier);
                 }
+                Program.Log(Program.Config.DisableSuppression? "Suppression enabled" : "Suppression disabled");
             }
             catch { /* Silently fail */ }
         }
@@ -182,6 +183,7 @@ namespace squad_dma.Source.Squad.Features
                 if (soldierActor == 0) return;
 
                 Memory.WriteValue<float>(soldierActor + Actor.CustomTimeDilation, _isSpeedHackEnabled ? 4.0f : 1.0f);
+                Program.Log(_isSpeedHackEnabled ? "Speed hack enabled" : "Speed hack disabled");
             }
             catch (Exception ex)
             {

@@ -67,56 +67,6 @@ namespace squad_dma
             _gameStats = null;
         }
         #endregion
-        /*
-
-               #region GameLoop
-               /// <summary>
-               /// Main Game Loop executed by Memory Worker Thread.
-               /// </summary>
-               public void GameLoop()
-               {
-                   try
-                   {
-                       if (!this._inGame)
-                       {
-                           this._vehiclesLogged = false;
-                           throw new GameEnded("Game has ended!");
-                       }
-
-                       UpdateLocalPlayerInfo();
-                       this._actors.UpdateList();
-                       this._actors.UpdateAllPlayers();
-                       // LogTeamInfo();
-                       //ApplyNoSpread();
-                       //ApplyNoRecoil();
-                       if (Program.Config.NoRecoil)
-                       {
-                           ApplyNoRecoilNoSpread();
-                       }
-                       if (Program.Config.NoSway)
-                       {
-                           ApplyNoSway();
-                       }
-                       if (Program.Config.NoCameraShake)
-                       {
-                           ApplyNoCameraShake();
-                       }
-                   }
-                   catch (DMAShutdown)
-                   {
-                       HandleDMAShutdown();
-                   }
-                   catch (GameEnded e)
-                   {
-                       HandleGameEnded(e);
-                   }
-                   catch (Exception ex)
-                   {
-                       HandleUnexpectedException(ex);
-                   }
-               }
-               #endregion
-        */
         #region Public Methods
         public void SetInstantSeatSwitch() => _debugVehicles?.SetInstantSeatSwitch();
         public void LogVehicles(bool force = false) => _debugVehicles?.LogVehicles(force);
@@ -304,7 +254,6 @@ namespace squad_dma
                     }
                     catch { return false; }
                 }
-                //ProcessPlayerInfo();
                 GetCameraCache();
                 return true;
             }
@@ -382,27 +331,36 @@ namespace squad_dma
         return UpdateOnFootPlayerInfo(scatterMap, pawnPtr, cameraFOV);
     }
 
-    /// <summary>
-    /// Reads the pawn pointer from memory using offset.
-    /// </summary>
-    /// <returns>The pawn pointer value</returns>
-    private ulong ReadPawnPointer()
-    {
-        return Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
-    }
+        /// <summary>
+        /// Reads the pawn pointer from memory using offset.
+        /// </summary>
+        /// <returns>The pawn pointer value</returns>
+        private ulong ReadPawnPointer()
+        {
+            if (_playerController == 0)
+                return 0;
 
-    /// <summary>
-    /// Reads the camera FOV from memory using offset.
-    /// </summary>
-    /// <returns>The camera FOV value</returns>
+            try
+            {
+                return Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+        /// <summary>
+        /// Reads the camera FOV from memory using offset.
+        /// </summary>
+        /// <returns>The camera FOV value</returns>
 
-    /// <summary>
-    /// Applies no-recoil effect by zeroing out recoil-related memory values.
-    /// </summary>
-    /// <summary>
-    /// Applies no-recoil and no-sway effects by zeroing out relevant memory values.
-    /// </summary>
-    private readonly List<IScatterWriteEntry> _noRecoilAnimEntries = new List<IScatterWriteEntry>
+        /// <summary>
+        /// Applies no-recoil effect by zeroing out recoil-related memory values.
+        /// </summary>
+        /// <summary>
+        /// Applies no-recoil and no-sway effects by zeroing out relevant memory values.
+        /// </summary>
+        private readonly List<IScatterWriteEntry> _noRecoilAnimEntries = new List<IScatterWriteEntry>
 {
     new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeapRecoilRelLoc, 0f),     // X
     new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeapRecoilRelLoc + 4, 0f), // Y
