@@ -48,10 +48,10 @@ namespace squad_dma
                 Program.Log($"Failed to load keyboard manager. Retrying in {DELAY}ms.");
             }
 
-            if (!hasLoggedFailure) // Logger l'échec une seule fois
+            if (!hasLoggedFailure)
             {
                 Program.Log($"Failed to initialize keyboard manager after {InputManager.MAX_ATTEMPTS} attempts. Zoom/dezoom functionality will be disabled.");
-                hasLoggedFailure = true; // Marquer que l'échec a été loggé
+                hasLoggedFailure = true;
             }
             InputManager.keyboardInitialized = false;
             return false;
@@ -260,11 +260,10 @@ namespace squad_dma
             if (!InputManager.keyboardInitialized || InputManager.gafAsyncKeyStateExport < 0x7FFFFFFFFFFF)
                 return false;
 
-            if (DateTime.UtcNow.Ticks - InputManager.lastUpdateTicks > TimeSpan.TicksPerMillisecond)
+            if (DateTime.UtcNow.Ticks - InputManager.lastUpdateTicks > TimeSpan.TicksPerMillisecond * 5)
                 InputManager.UpdateKeys();
 
             var virtualKeyCode = (int)key;
-
             return InputManager.pressedKeys.ContainsKey(virtualKeyCode);
         }
 
@@ -273,13 +272,14 @@ namespace squad_dma
             if (!InputManager.keyboardInitialized || InputManager.gafAsyncKeyStateExport < 0x7FFFFFFFFFFF)
                 return false;
 
-            if (DateTime.UtcNow.Ticks - InputManager.lastUpdateTicks > TimeSpan.TicksPerMillisecond)
+            if (DateTime.UtcNow.Ticks - InputManager.lastUpdateTicks > TimeSpan.TicksPerMillisecond * 5)
                 InputManager.UpdateKeys();
 
             var virtualKeyCode = (int)key;
+            var currentState = (InputManager.currentStateBitmap[(virtualKeyCode * 2 / 8)] & 1 << virtualKeyCode % 4 * 2) != 0;
+            var previousState = (InputManager.previousStateBitmap[(virtualKeyCode * 2 / 8)] & 1 << virtualKeyCode % 4 * 2) != 0;
 
-            return InputManager.pressedKeys.ContainsKey(virtualKeyCode) &&
-                   (InputManager.previousStateBitmap[(virtualKeyCode * 2 / 8)] & (1 << (virtualKeyCode % 4 * 2))) == 0;
+            return currentState && !previousState;
         }
     }
 }

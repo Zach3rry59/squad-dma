@@ -1,4 +1,5 @@
-﻿using SkiaSharp;
+﻿using Offsets;
+using SkiaSharp;
 using System.Diagnostics;
 using System.Numerics;
 
@@ -45,9 +46,33 @@ namespace squad_dma
                    SquadID == Memory.LocalPlayer?.SquadID;
         }
 
+        public bool bInThirdPersonView { get; set; } = false;
+        public Vector3 CameraOffset { get; set; } = new Vector3(0, -300, 50); // Default third-person offset
+        public float CameraDistance { get; set; } = 300.0f;
+
+        // Add this method to control third-person view
+        public void UpdateThirdPersonView(ulong pawnPtr)
+        {
+            try
+            {
+                if (pawnPtr == 0) return;
+
+                // Read the current third-person status from memory
+                bInThirdPersonView = Memory.ReadValue<bool>(pawnPtr + 0x1654);
+
+                // If in third-person, read camera settings
+                if (bInThirdPersonView)
+                {
+                    CameraOffset = Memory.ReadValue<Vector3>(pawnPtr + 0x21D0);
+                    CameraDistance = Memory.ReadValue<float>(pawnPtr + 0x21DC);
+                }
+            }
+            catch { /* Silently handle errors */ }
+        }
+
         public ActorType ActorType { get; set; } = ActorType.Player;
         private Vector3 _pos = new Vector3(0, 0, 0);
-        public Vector3 Position // 96 bits, cannot set atomically
+        public Vector3 Position
         {
             get
             {
@@ -65,7 +90,7 @@ namespace squad_dma
             }
         }
         public Vector2 ZoomedPosition { get; set; } = new();
-        public Vector2 Rotation { get; set; } = new Vector2(0, 0); // 64 bits will be atomic
+        public Vector2 Rotation { get; set; } = new Vector2(0, 0);
         public Vector3 Rotation3D { get; set; } = new Vector3(0, 0, 0);
         public int ErrorCount { get; set; } = 0;
 
@@ -84,7 +109,7 @@ namespace squad_dma
         {
             Debug.WriteLine("Actor Constructor: Initialization started.");
             this.Base = actorBase;
-            this.Mesh = Memory.ReadValue<ulong>(actorBase + 0x288); // Offset Mesh
+            this.Mesh = Memory.ReadValue<ulong>(actorBase + ASQSoldier.Mesh); // Offset Mesh
             //Program.Log($"Actor Mesh initialized: {this.Mesh:X}");
         }
         #endregion

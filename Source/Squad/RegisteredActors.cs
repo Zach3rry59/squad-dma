@@ -246,11 +246,9 @@ namespace squad_dma
             try
             {
                 var count = _actors.Count;
+
                 if (count < 10)
-                {
-                    //Program.Log($"UpdateAllPlayers: Actor count ({count}) is less than 10, skipping update.");
                     throw new GameEnded();
-                }
 
                 var actorBases = _actors.Values.Select(actor => actor.Base).Order().ToArray();
                 var playerInfoScatterMap = new ScatterReadMap(count);
@@ -534,11 +532,9 @@ namespace squad_dma
                 var playerStateRound = scatterMap.AddRound();           // Read PlayerState addresses
                 var rootComponentRound = scatterMap.AddRound();        // Read RootComponent from PlayerState
                 var positionRound = scatterMap.AddRound();             // Read position from RootComponent
-
-                // Define offsets (adjust these based on your game)
+)
                 var offsets = new { RootComponent = 0x138, RelativeLocation = 0x11C };
 
-                // Build scatter read entries
                 for (int i = 0; i < playerArraySize; i++)
                 {
                     var playerStateAddr = playerStateRound.AddEntry<ulong>(i, 0, playerArrayData + (uint)(i * 0x8));
@@ -546,10 +542,8 @@ namespace squad_dma
                     positionRound.AddEntry<Vector3>(i, 2, rootComponentAddr, null, Offsets.USceneComponent.RelativeLocation);
                 }
 
-                // Execute the scatter read
                 scatterMap.Execute();
 
-                // Process results
                 for (int i = 0; i < playerArraySize; i++)
                 {
                     // Get PlayerState address
@@ -559,14 +553,12 @@ namespace squad_dma
                         continue;
                     }
 
-                    // Get RootComponent from PlayerState
                     if (!scatterMap.Results[i][1].TryGetResult<ulong>(out var rootComponentAddr) || rootComponentAddr == 0)
                     {
                         Console.WriteLine($"Player {i}: No valid RootComponent in PlayerState.");
-                        continue; // Skip or handle as needed
+                        continue;
                     }
 
-                    // Get position from RootComponent
                     if (scatterMap.Results[i][2].TryGetResult<Vector3>(out var position))
                     {
                         Console.WriteLine($"Player {i}: Position = ({position.X}, {position.Y}, {position.Z})");
