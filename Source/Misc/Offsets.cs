@@ -147,6 +147,10 @@
         public const uint InventoryComponent = 0x2108; // USQPawnInventoryComponent*
         public const uint CachedAnimInstance1p = 0x2260; // USQAnimInstanceSoldier1P*
         public const uint Mesh = 0x288; // USkeletalMeshComponent*
+        public const uint UnderSuppressionPercentage = 0x15e4; // float
+        public const uint MaxSuppressionPercentage = 0x15e8; // float
+        public const uint SuppressionEffectsDecayRate = 0x15ec; // float
+        public const uint SuppressionMultiplier = 0x15f0; // float
 
         public const uint WeaponBasedFOV = 0x288; // Float
     }

@@ -18,6 +18,7 @@ namespace squad_dma
         private ulong _gameInstance;
         private ulong _localPlayer;
         private ulong _playerController;
+        private ulong _pawnPtr;
         private Vector3 _absoluteLocation;
         private string _currentLevel = string.Empty;
         private bool _vehiclesLogged = false;
@@ -27,7 +28,7 @@ namespace squad_dma
         //FOV & Recoil thing
         private ulong _currentWeaponPtr = 0;
         private ulong _lastNoRecoilWeaponPtr = 0;
-
+        private ulong _cameraManagerPtr;
         private bool _isAimingDownSights;
         private bool _hasPipScope;
         private float _currentFOV;
@@ -98,23 +99,33 @@ namespace squad_dma
                     throw new GameEnded("Game has ended!");
                 }
 
-                UpdateLocalPlayerInfo();
                 this._actors.UpdateList();
                 this._actors.UpdateAllPlayers();
+
+                if (_pawnPtr == 0 || (DateTime.Now - _lastTeamCheck).TotalMilliseconds > TeamCheckInterval)
+                {
+                    GetPlayerController(); // Update cached pawn pointer
+                }
+                UpdateLocalPlayerInfo(_pawnPtr);
+
                 // LogTeamInfo();
-                //ApplyNoSpread();
-                //ApplyNoRecoil();
-                if (Program.Config.NoRecoil)
+
+                if (_pawnPtr != 0)
                 {
-                    ApplyNoRecoilNoSpread();
-                }
-                if (Program.Config.NoSway)
-                {
-                    ApplyNoSway();
-                }
-                if (Program.Config.NoCameraShake)
-                {
-                    ApplyNoCameraShake();
+                    if (Program.Config.NoRecoil)
+                    {
+                        ApplyNoRecoilNoSpread(_pawnPtr);
+
+                        ApplyNoSuppress(_pawnPtr);
+                    }
+                    if (Program.Config.NoSway)
+                    {
+                        ApplyNoSway(_pawnPtr);
+                    }
+                    if (Program.Config.NoCameraShake)
+                    {
+                        ApplyNoCameraShake();
+                    }
                 }
             }
             catch (DMAShutdown)
@@ -181,11 +192,23 @@ namespace squad_dma
                         throw new GameNotRunningException("Process terminated during wait");
                     }
 
+                    // Check core game components
                     if (GetGameWorld() && GetGameInstance() && GetCurrentLevel() && InitActors() && GetLocalPlayer())
                     {
                         if (!Memory.GetModuleBase())
                         {
                             throw new GameNotRunningException("Process terminated during initialization");
+                        }
+
+                        // Attempt to get the pawn pointer, but don’t require it to proceed
+                        _pawnPtr = ReadPawnPointer();
+                        if (_pawnPtr == 0)
+                        {
+                            Program.Log("Pawn pointer is 0 - waiting for player to spawn...");
+                        }
+                        else
+                        {
+                            Program.Log("Pawn pointer found!");
                         }
 
                         Thread.Sleep(1000);
@@ -273,6 +296,14 @@ namespace squad_dma
             catch { return false; }
         }
         /// <summary>
+        /// Reads the pawn pointer from memory using offset.
+        /// </summary>
+        /// <returns>The pawn pointer value</returns>
+        private ulong ReadPawnPointer()
+        {
+            return _playerController == 0 ? 0 : Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
+        }
+        /// <summary>
         /// Gets LocalPlayer
         /// </summary>
         private bool GetLocalPlayer()
@@ -281,13 +312,16 @@ namespace squad_dma
             {
                 var localPlayers = Memory.ReadPtr(_gameInstance + Offsets.GameInstance.LocalPlayers);
                 _localPlayer = Memory.ReadPtr(localPlayers);
-                // Program.Log($"Found LocalPlayer at 0x{_localPlayer:X}");
+                if (_localPlayer == 0) return false;
+
                 _localUPlayer = new UActor(_localPlayer);
                 _localUPlayer.Team = Team.Unknown;
-                GetPlayerController();
                 return true;
             }
-            catch { return false; }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -298,22 +332,67 @@ namespace squad_dma
             try
             {
                 _playerController = Memory.ReadPtr(_localPlayer + Offsets.UPlayer.PlayerController);
+                if (_playerController == 0) return false;
+
                 var playerState = Memory.ReadPtr(_playerController + Offsets.Controller.PlayerState);
                 _localUPlayer.TeamID = Memory.ReadValue<int>(playerState + Offsets.ASQPlayerState.TeamID);
-                // Program.Log($"Found PlayerController at 0x{_playerController:X}");
                 return true;
             }
-            catch { return false; }
+            catch
+            {
+                return false;
+            }
+        }
+        private bool UpdateLocalPlayerInfo(ulong pawnPtr)
+        {
+            try
+            {
+                if ((DateTime.Now - _lastTeamCheck).TotalMilliseconds > 1500)
+                {
+                    _lastTeamCheck = DateTime.Now;
+                    UpdateTeamInfo();
+                    _pawnPtr = ReadPawnPointer();
+                }
+                ProcessPlayerInfo(_pawnPtr);
+                GetCameraCache();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
+        private void UpdateTeamInfo()
+        {
+            try
+            {
+                ulong playerState = Memory.ReadPtr(_playerController + Offsets.Controller.PlayerState);
+                ulong squadState = Memory.ReadPtr(_playerController + Offsets.PlayerController.SquadState);
+
+                if (playerState == 0 || squadState == 0)
+                    return;
+
+                int teamId = Memory.ReadValue<int>(playerState + Offsets.ASQPlayerState.TeamID);
+                int squadId = Memory.ReadValue<int>(squadState + Offsets.ASQSquadState.SquadId);
+
+                if (_localUPlayer.TeamID != teamId || _localUPlayer.SquadID != squadId)
+                {
+                    _localUPlayer.TeamID = teamId;
+                    _localUPlayer.SquadID = squadId;
+                }
+            }
+            catch
+            {
+                // Fail silently
+            }
+        }
         /// <summary>
         /// Processes and updates player information from game memory.
         /// </summary>
         /// <returns>True if successful, false otherwise</returns>
-        private bool ProcessPlayerInfo()
+        private bool ProcessPlayerInfo(ulong pawnPtr)
         {
-            var scatterMap = new ScatterReadMap(1);
-            ulong pawnPtr = ReadPawnPointer();
             if (pawnPtr == 0)
             {
                 ResetPlayerStateToDefault();
@@ -332,22 +411,190 @@ namespace squad_dma
                 return true;
             }
 
+            var scatterMap = new ScatterReadMap(2);
             return UpdateOnFootPlayerInfo(scatterMap, pawnPtr, cameraFOV);
         }
 
+
         /// <summary>
-        /// Reads the pawn pointer from memory using offset.
+        /// Updates player info for on-foot scenarios.
         /// </summary>
-        /// <returns>The pawn pointer value</returns>
-        private ulong ReadPawnPointer()
+        /// <param name="scatterMap">The scatter read map for batch memory reading</param>
+        /// <param name="pawnPtr">Pointer to the pawn</param>
+        /// <param name="cameraFOV">Base camera FOV</param>
+        /// <returns>True if successful</returns>
+        private bool UpdateOnFootPlayerInfo(ScatterReadMap scatterMap, ulong pawnPtr, float cameraFOV)
         {
-            return Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
+            ulong inventoryPtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.InventoryComponent);
+            if (inventoryPtr == 0)
+            {
+                _isAimingDownSights = false;
+                _hasPipScope = false;
+                _currentFOV = cameraFOV;
+                return true;
+            }
+
+            var round1 = scatterMap.AddRound();
+            var weaponPtrEntry = round1.AddEntry<ulong>(0, 0, inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
+            scatterMap.Execute();
+
+            if (!scatterMap.Results[0][0].TryGetResult<ulong>(out ulong weaponPtr) || weaponPtr == 0)
+            {
+                _isAimingDownSights = false;
+                _hasPipScope = false;
+                _currentFOV = cameraFOV;
+                return true;
+            }
+
+            return UpdateWeaponInfo(scatterMap, weaponPtr, cameraFOV);
+        }
+
+        /// <summary>
+        /// Updates weapon-specific information including ADS, scope, and FOV.
+        /// </summary>
+        /// <param name="scatterMap">The scatter read map</param>
+        /// <param name="weaponPtr">Pointer to the current weapon</param>
+        /// <param name="cameraFOV">Base camera FOV</param>
+        /// <returns>True if successful</returns>
+        private bool UpdateWeaponInfo(ScatterReadMap scatterMap, ulong weaponPtr, float cameraFOV)
+        {
+            _currentWeaponPtr = weaponPtr; // Update current weapon pointer
+
+            var round2 = scatterMap.AddRound();
+            round2.AddEntry<byte>(0, 1, weaponPtr + Offsets.ASQWeapon.bAimingDownSights);
+            round2.AddEntry<ulong>(0, 2, weaponPtr + Offsets.ASQWeapon.CachedPipScope);
+            round2.AddEntry<float>(0, 3, weaponPtr + Offsets.ASQWeapon.CurrentFOV);
+            round2.AddEntry<byte>(0, 4, weaponPtr + Offsets.ASQWeapon.CurrentState);
+            scatterMap.Execute();
+
+            _isAimingDownSights = scatterMap.Results[0][1].TryGetResult<byte>(out byte ads) && ads == 1;
+            _hasPipScope = scatterMap.Results[0][2].TryGetResult<ulong>(out ulong pipScopePtr) && pipScopePtr != 0;
+            float weaponFOV = scatterMap.Results[0][3].TryGetResult<float>(out float currFOV) && currFOV > 5f && currFOV < 180f ? currFOV : cameraFOV;
+            _isFiring = scatterMap.Results[0][4].TryGetResult<byte>(out byte firing) && firing == 1;
+
+            float finalFOV = cameraFOV; // Default to camera FOV
+            if (_isAimingDownSights)
+            {
+                finalFOV = weaponFOV; // Set to ADS FOV initially
+                if (_hasPipScope && pipScopePtr != 0)
+                {
+                    UpdateScopeMagnification(pipScopePtr, weaponFOV, ref finalFOV); // Adjust for magnification
+                }
+            }
+            _currentFOV = finalFOV;
+
+            //Program.Log($"ADS: {_isAimingDownSights}, PipScope: {_hasPipScope}, Firing: {_isFiring}, WeaponPtr: 0x{_currentWeaponPtr:X}, FOV: {_currentFOV}, WeaponFOV: {weaponFOV}, CameraFOV: {cameraFOV}");
+
+            return true;
+        }
+
+        /// <summary>
+        /// Updates scope magnification and adjusts FOV accordingly.
+        /// </summary>
+        /// <param name="pipScopePtr">The pipScopePtr adress</param>
+        /// <param name="pipScopePtr">Pointer to the pip scope</param>
+        /// <param name="weaponFOV">Base weapon FOV</param>
+        private void UpdateScopeMagnification(ulong pipScopePtr, float weaponFOV, ref float fov)
+        {
+            int magnificationIdx = Memory.ReadValue<int>(pipScopePtr + Offsets.USQPipScopeCaptureComponent.CurrentMagnificationLevel);
+
+            _magnificationIndex = (magnificationIdx >= 0 && magnificationIdx < 3) ? magnificationIdx : 0;
+            float magnification = _magnificationIndex switch
+            {
+                0 => Program.Config.FirstScopeMagnification,  // 1st scope Magnification
+                1 => Program.Config.SecondScopeMagnification, // 2nd scope Magnification
+                2 => Program.Config.ThirdScopeMagnification,  // 3rd scope Magnification
+                _ => 1f                               // Default (no magnification)
+            };
+
+            if (magnification > 1f)
+            {
+                fov = GetZoomedFOV(magnification, weaponFOV);
+            }
+        }
+
+        //Zoomed FOV Calculation :
+
+        float GetZoomedFOV(float MagnificationDesired, float DefaultFOV)
+        {
+            float defaultFOVRad = DefaultFOV * 0.00872664626f; 
+            float zoomedHalfFOVRad = (float)Math.Atan(Math.Tan(defaultFOVRad) / MagnificationDesired);
+            return 2.0f * zoomedHalfFOVRad * 57.295779513f;
+        }
+        /// <summary>
+        /// Resets player state variables to their default values.
+        /// </summary>
+        private void ResetPlayerStateToDefault()
+        {
+            _isAimingDownSights = false;
+            _hasPipScope = false;
+            _isFiring = false;
+            _currentFOV = 90f;
+            _currentWeaponPtr = 0;
+            _lastNoRecoilWeaponPtr = 0;
         }
 
         /// <summary>
         /// Reads the camera FOV from memory using offset.
         /// </summary>
         /// <returns>The camera FOV value</returns>
+        private float ReadCameraFOV()
+        {
+            _cameraManagerPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.PlayerCameraManager);
+            return _cameraManagerPtr == 0 ? 90f : Memory.ReadValue<float>(_cameraManagerPtr + Offsets.Camera.CameraFov);
+        }
+
+        /// <summary>
+        /// Gets CameraCache
+        /// </summary>
+        private bool GetCameraCache()
+        {
+            try
+            {
+                var cameraInfoScatterMap = new ScatterReadMap(1);
+                var cameraManagerRound = cameraInfoScatterMap.AddRound();
+                var cameraInfoRound = cameraInfoScatterMap.AddRound();
+
+                var cameraManagerPtr = cameraManagerRound.AddEntry<ulong>(0, 0, _playerController + Offsets.PlayerController.PlayerCameraManager);
+                cameraManagerRound.AddEntry<int>(0, 11, _gameWorld + Offsets.World.WorldOrigin);
+                cameraManagerRound.AddEntry<int>(0, 12, _gameWorld + Offsets.World.WorldOrigin + 0x4);
+                cameraManagerRound.AddEntry<int>(0, 13, _gameWorld + Offsets.World.WorldOrigin + 0x8);
+                cameraInfoRound.AddEntry<Vector3>(0, 1, cameraManagerPtr, null, Offsets.Camera.CameraLocation);
+                cameraInfoRound.AddEntry<Vector3>(0, 2, cameraManagerPtr, null, Offsets.Camera.CameraRotation);
+
+                cameraInfoScatterMap.Execute();
+
+                if (!cameraInfoScatterMap.Results[0][1].TryGetResult<Vector3>(out var location))
+                {
+                    return false;
+                }
+                if (!cameraInfoScatterMap.Results[0][2].TryGetResult<Vector3>(out var rotation))
+                {
+                    return false;
+                }
+                if (cameraInfoScatterMap.Results[0][11].TryGetResult<int>(out var absoluteX)
+                && cameraInfoScatterMap.Results[0][12].TryGetResult<int>(out var absoluteY)
+                && cameraInfoScatterMap.Results[0][13].TryGetResult<int>(out var absoluteZ))
+                {
+                    _absoluteLocation = new Vector3(absoluteX, absoluteY, absoluteZ);
+                    // Program.Log(_absoluteLocation.ToString());
+                }
+                _localUPlayer.Position = location;
+                _localUPlayer.Rotation = new Vector2(rotation.Y, rotation.X);
+                _localUPlayer.Rotation3D = rotation;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // Helper method for applying effect
+        private bool CanApplyPlayerEffects(ulong pawnPtr)
+        {
+            if (pawnPtr == 0) return false;
+
+            string pawnClassName = Memory.GetActorClassName(pawnPtr);
+            return pawnClassName.Contains("BP_Soldier");
+        }
 
         /// <summary>
         /// Applies no-recoil effect by zeroing out recoil-related memory values.
@@ -549,25 +796,22 @@ namespace squad_dma
         new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinProneTransitionDeviation, 0f),
     };
         // Helper method to get common base pointers
-        private bool GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)
-    {
-        animInstancePtr = 0;
-        weaponStaticInfoPtr = 0;
+        private bool GetBasePointers(ulong pawnPtr, out ulong animInstancePtr, out ulong weaponStaticInfoPtr)
+        {
+            animInstancePtr = 0;
+            weaponStaticInfoPtr = 0;
 
-        ulong pawnPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
-        if (pawnPtr == 0) return false;
+            ulong inventoryPtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.InventoryComponent);
+            if (inventoryPtr == 0) return false;
 
-        ulong inventoryPtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.InventoryComponent);
-        if (inventoryPtr == 0) return false;
+            ulong weaponPtr = Memory.ReadPtr(inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
+            if (weaponPtr == 0) return false;
 
-        ulong weaponPtr = Memory.ReadPtr(inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
-        if (weaponPtr == 0) return false;
+            animInstancePtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.CachedAnimInstance1p);
+            weaponStaticInfoPtr = Memory.ReadPtr(weaponPtr + Offsets.ASQWeapon.WeaponStaticInfo);
 
-        animInstancePtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.CachedAnimInstance1p);
-        weaponStaticInfoPtr = Memory.ReadPtr(weaponPtr + Offsets.ASQWeapon.WeaponStaticInfo);
-
-        return animInstancePtr != 0 && weaponStaticInfoPtr != 0;
-    }
+            return animInstancePtr != 0 && weaponStaticInfoPtr != 0;
+        }
 
         // Helper method to update scatter entry addresses
         private IScatterWriteEntry UpdateEntryAddress(IScatterWriteEntry entry, ulong baseAddress)
@@ -579,113 +823,56 @@ namespace squad_dma
             return entry;
         }
 
-        public void ApplyNoRecoilNoSpread()
+        public void ApplyNoRecoilNoSpread(ulong pawnPtr)
+{
+    if (!CanApplyPlayerEffects(pawnPtr))
+    {
+        _lastNoRecoilWeaponPtr = 0;
+        return;
+    }
+
+    if (_currentWeaponPtr == 0)
+    {
+        _lastNoRecoilWeaponPtr = 0;
+        return;
+    }
+
+    try
+    {
+        if (_currentWeaponPtr != _lastNoRecoilWeaponPtr || _lastNoRecoilWeaponPtr == 0)
         {
-            try
-            {
-                ulong pawnPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
-                if (pawnPtr == 0)
-                {
-                    _lastNoRecoilWeaponPtr = 0;
-                    Program.Log("No-recoil/no-spread skipped: No acknowledged pawn.");
-                    return;
-                }
+            if (!GetBasePointers(pawnPtr, out ulong animInstancePtr, out ulong weaponStaticInfoPtr))
+                return;
 
-                // Check if the player is in a vehicle
-                string pawnClassName = Memory.GetActorClassName(pawnPtr);
-                bool isInVehicle = !pawnClassName.Contains("BP_Soldier");
-                if (isInVehicle)
-                {
-                    _lastNoRecoilWeaponPtr = 0;
-                   // Program.Log("No-recoil/no-spread skipped: Player is in a vehicle.");
-                    return;
-                }
+            var scatterEntries = new List<IScatterWriteEntry>();
+            scatterEntries.AddRange(_noRecoilAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+            scatterEntries.AddRange(_noRecoilWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+            scatterEntries.AddRange(_noSpreadAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+            scatterEntries.AddRange(_noSpreadWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
 
-                if (_currentWeaponPtr == 0)
-                {
-                    _lastNoRecoilWeaponPtr = 0;
-                    // Program.Log("No-recoil/no-spread skipped: No current weapon detected.");
-                    return;
-                }
-
-                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr))
-                {
-                    Program.Log("No-recoil/no-spread skipped: Failed to get base pointers.");
-                    return;
-                }
-
-                var scatterEntries = new List<IScatterWriteEntry>();
-
-                if (_currentWeaponPtr != _lastNoRecoilWeaponPtr || _lastNoRecoilWeaponPtr == 0)
-                {
-                    scatterEntries.AddRange(_noRecoilAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
-                    scatterEntries.AddRange(_noRecoilWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
-                    scatterEntries.AddRange(_noSpreadAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
-                    scatterEntries.AddRange(_noSpreadWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
-                    _lastNoRecoilWeaponPtr = _currentWeaponPtr;
-                    Program.Log($"No-recoil & no-spread applied for weapon 0x{_currentWeaponPtr:X}");
-                }
-
-                if (scatterEntries.Count > 0)
-                {
-                    Memory.WriteScatter(scatterEntries);
-                }
-            }
-            catch { /* Silently fail */ }
+            if (scatterEntries.Count > 0)
+                Memory.WriteScatter(scatterEntries);
+            Program.Log($"Applied no recoil and no spread to weapon: {_currentWeaponPtr}");
+            _lastNoRecoilWeaponPtr = _currentWeaponPtr;
         }
-        // no-recoil
-        public void ApplyNoRecoil()
-        {
-            try
-            {
-                if (_currentWeaponPtr == 0)
-                {
-                    _lastNoRecoilWeaponPtr = 0;
-                    return;
-                }
-
-                if (_currentWeaponPtr == _lastNoRecoilWeaponPtr && _lastNoRecoilWeaponPtr != 0)
-                {
-                    return;
-                }
-
-                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
-
-                var scatterEntries = new List<IScatterWriteEntry>();
-                scatterEntries.AddRange(_noRecoilAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
-                scatterEntries.AddRange(_noRecoilWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
-
-                if (scatterEntries.Count > 0)
-                {
-                    Memory.WriteScatter(scatterEntries);
-                    _lastNoRecoilWeaponPtr = _currentWeaponPtr; // Update last weapon pointer
-                    //Program.Log($"No-recoil applied successfully for weapon at 0x{_currentWeaponPtr:X}.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Program.Log($"Failed to apply no-recoil: {ex.Message}");
-            }
-        }
-
+    }
+    catch { /* Silently fail */ }
+}
         // Applies no-sway (active when aiming)
-        public void ApplyNoSway()
+        public void ApplyNoSway(ulong pawnPtr)
         {
-            if (!_isAimingDownSights) return; // Only apply when ADS
+            if (!_isAimingDownSights || !CanApplyPlayerEffects(pawnPtr)) return;
 
             try
             {
-                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
+                if (!GetBasePointers(pawnPtr, out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
 
                 var scatterEntries = new List<IScatterWriteEntry>();
                 scatterEntries.AddRange(_noSwayAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
                 scatterEntries.AddRange(_noSwayWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
 
                 if (scatterEntries.Count > 0)
-                {
                     Memory.WriteScatter(scatterEntries);
-                    //Program.Log("No-sway applied successfully.");
-                }
             }
             catch (Exception ex)
             {
@@ -693,283 +880,66 @@ namespace squad_dma
             }
         }
 
-        // no-spread
-        public void ApplyNoSpread()
-        {
-            //if (!_isFiring) return; // Uncomment to only apply when firing
+        //No supress 
 
+        private readonly List<IScatterWriteEntry> _noSuppressEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.ASQSoldier.UnderSuppressionPercentage, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.ASQSoldier.SuppressionMultiplier, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.ASQSoldier.MaxSuppressionPercentage, 0f),
+        };
+
+        public void ApplyNoSuppress(ulong pawnPtr)
+        {
+            if (!CanApplyPlayerEffects(pawnPtr)) return;
             try
             {
-                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
-
-                var scatterEntries = new List<IScatterWriteEntry>();
-                scatterEntries.AddRange(_noSpreadAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
-                scatterEntries.AddRange(_noSpreadWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
-
-                if (scatterEntries.Count > 0)
-                {
-                    Memory.WriteScatter(scatterEntries);
-                    //Program.Log("No-spread applied successfully.");
-                }
+                float currentSuppression = Memory.ReadValue<float>(pawnPtr + ASQSoldier.UnderSuppressionPercentage);
+                var scatterEntries = _noSuppressEntries.Select(e => UpdateEntryAddress(e, pawnPtr)).ToList();
+                Memory.WriteScatter(scatterEntries);
+                //Program.Log($"no-suppress:");
             }
             catch (Exception ex)
             {
-                Program.Log($"Failed to apply no-spread: {ex.Message}");
+                Program.Log($"Failed to apply no-suppress: {ex.Message}");
             }
         }
 
         // no-shake
         public void ApplyNoCameraShake()
         {
-            if (!_isFiring) return; // Only apply when firing
+            if (!_isFiring || _cameraManagerPtr == 0) return;
 
             try
             {
                 var scatterEntries = new List<IScatterWriteEntry>();
+                ulong cameraShakeModPtr = Memory.ReadPtr(_cameraManagerPtr + Offsets.Camera.CachedCameraShakeMod);
+                if (cameraShakeModPtr == 0) return;
 
-                // Handle camera shake suppression
-                ulong cameraManagerPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.PlayerCameraManager);
-                if (cameraManagerPtr == 0) return;
-                ulong cameraShakeModPtr = Memory.ReadPtr(cameraManagerPtr + Offsets.Camera.CachedCameraShakeMod);
-                if (cameraShakeModPtr != 0)
+                ulong activeShakesDataPtr = Memory.ReadPtr(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes);
+                if (activeShakesDataPtr == 0) return;
+
+                int activeShakesCount = Memory.ReadValue<int>(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes + 0x8);
+                if (activeShakesCount > 0)
                 {
-                    ulong activeShakesDataPtr = Memory.ReadPtr(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes);
-                    if (activeShakesDataPtr != 0)
+                    const int shakeInfoSize = 0x18;
+                    for (int i = 0; i < activeShakesCount; i++)
                     {
-                        int activeShakesCount = Memory.ReadValue<int>(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes + 0x8);
-                        if (activeShakesCount > 0)
+                        ulong shakeBasePtr = Memory.ReadPtr(activeShakesDataPtr + (uint)(i * shakeInfoSize));
+                        if (shakeBasePtr != 0)
                         {
-                            const int shakeInfoSize = 0x18;
-                            for (int i = 0; i < activeShakesCount; i++)
-                            {
-                                ulong shakeBasePtr = Memory.ReadPtr(activeShakesDataPtr + (uint)(i * shakeInfoSize));
-                                if (shakeBasePtr != 0)
-                                {
-                                    scatterEntries.Add(new ScatterWriteDataEntry<float>(shakeBasePtr + Offsets.UCameraShakeBase.ShakeScale, 0f));
-                                }
-                            }
+                            scatterEntries.Add(new ScatterWriteDataEntry<float>(shakeBasePtr + Offsets.UCameraShakeBase.ShakeScale, 0f));
                         }
                     }
                 }
 
                 if (scatterEntries.Count > 0)
-                {
                     Memory.WriteScatter(scatterEntries);
-                    //Program.Log("No-shake applied successfully.");
-                }
             }
             catch (Exception ex)
             {
                 Program.Log($"Failed to apply no-shake: {ex.Message}");
             }
-        }
-        private float ReadCameraFOV()
-        {
-            ulong cameraManagerPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.PlayerCameraManager);
-            return Memory.ReadValue<float>(cameraManagerPtr + Offsets.Camera.CameraFov);
-        }
-
-        /// <summary>
-        /// Updates player info for on-foot scenarios.
-        /// </summary>
-        /// <param name="scatterMap">The scatter read map for batch memory reading</param>
-        /// <param name="pawnPtr">Pointer to the pawn</param>
-        /// <param name="cameraFOV">Base camera FOV</param>
-        /// <returns>True if successful</returns>
-        private bool UpdateOnFootPlayerInfo(ScatterReadMap scatterMap, ulong pawnPtr, float cameraFOV)
-        {
-            ulong inventoryPtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.InventoryComponent);
-            if (inventoryPtr == 0)
-            {
-                _isAimingDownSights = false;
-                _hasPipScope = false;
-                _currentFOV = cameraFOV;
-                return true;
-            }
-
-            var round1 = scatterMap.AddRound();
-            var weaponPtrEntry = round1.AddEntry<ulong>(0, 0, inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
-            scatterMap.Execute();
-
-            if (!scatterMap.Results[0][0].TryGetResult<ulong>(out ulong weaponPtr) || weaponPtr == 0)
-            {
-                _isAimingDownSights = false;
-                _hasPipScope = false;
-                _currentFOV = cameraFOV;
-                return true;
-            }
-
-            return UpdateWeaponInfo(scatterMap, weaponPtr, cameraFOV);
-        }
-
-        /// <summary>
-        /// Updates weapon-specific information including ADS, scope, and FOV.
-        /// </summary>
-        /// <param name="scatterMap">The scatter read map</param>
-        /// <param name="weaponPtr">Pointer to the current weapon</param>
-        /// <param name="cameraFOV">Base camera FOV</param>
-        /// <returns>True if successful</returns>
-        private bool UpdateWeaponInfo(ScatterReadMap scatterMap, ulong weaponPtr, float cameraFOV)
-        {
-            _currentWeaponPtr = weaponPtr; // Update current weapon pointer
-
-            var round2 = scatterMap.AddRound();
-            round2.AddEntry<byte>(0, 1, weaponPtr + Offsets.ASQWeapon.bAimingDownSights);
-            round2.AddEntry<ulong>(0, 2, weaponPtr + Offsets.ASQWeapon.CachedPipScope);
-            round2.AddEntry<float>(0, 3, weaponPtr + Offsets.ASQWeapon.CurrentFOV);
-            round2.AddEntry<byte>(0, 4, weaponPtr + Offsets.ASQWeapon.CurrentState);
-            scatterMap.Execute();
-
-            _isAimingDownSights = scatterMap.Results[0][1].TryGetResult<byte>(out byte ads) && ads == 1;
-            _hasPipScope = scatterMap.Results[0][2].TryGetResult<ulong>(out ulong pipScopePtr) && pipScopePtr != 0;
-            float weaponFOV = scatterMap.Results[0][3].TryGetResult<float>(out float currFOV) && currFOV > 5f && currFOV < 180f ? currFOV : cameraFOV;
-            _isFiring = scatterMap.Results[0][4].TryGetResult<byte>(out byte firing) && firing == 1;
-
-            float finalFOV = cameraFOV; // Default to camera FOV
-            if (_isAimingDownSights)
-            {
-                finalFOV = weaponFOV; // Set to ADS FOV initially
-                if (_hasPipScope && pipScopePtr != 0)
-                {
-                    UpdateScopeMagnification(pipScopePtr, weaponFOV, ref finalFOV); // Adjust for magnification
-                }
-            }
-
-            // Assign the final FOV only once
-            _currentFOV = finalFOV;
-
-            //Program.Log($"ADS: {_isAimingDownSights}, PipScope: {_hasPipScope}, Firing: {_isFiring}, WeaponPtr: 0x{_currentWeaponPtr:X}, FOV: {_currentFOV}, WeaponFOV: {weaponFOV}, CameraFOV: {cameraFOV}");
-
-            return true;
-        }
-
-        /// <summary>
-        /// Updates scope magnification and adjusts FOV accordingly.
-        /// </summary>
-        /// <param name="pipScopePtr">The pipScopePtr adress</param>
-        /// <param name="pipScopePtr">Pointer to the pip scope</param>
-        /// <param name="weaponFOV">Base weapon FOV</param>
-        private void UpdateScopeMagnification(ulong pipScopePtr, float weaponFOV, ref float fov)
-        {
-            // Directly read the CurrentMagnificationLevel using ReadValue
-            int magnificationIdx = Memory.ReadValue<int>(pipScopePtr + Offsets.USQPipScopeCaptureComponent.CurrentMagnificationLevel);
-
-            // Validate and assign the magnification index
-            _magnificationIndex = (magnificationIdx >= 0 && magnificationIdx < 3) ? magnificationIdx : 0;
-            //Program.Log($"ADS: {_isAimingDownSights}, PipScope: {_hasPipScope}, FOV: {_currentFOV}, WeaponFOV: {weaponFOV}, CameraFOV: {cameraFOV}");
-            // Determine magnification factor based on index
-            float magnification = _magnificationIndex switch
-            {
-                0 => Program.Config.FirstScopeMagnification,  // 1st scope Magnification
-                1 => Program.Config.SecondScopeMagnification, // 2nd scope Magnification
-                2 => Program.Config.ThirdScopeMagnification,  // 3rd scope Magnification
-                _ => 1f                               // Default (no magnification)
-            };
-
-            if (magnification > 1f)
-            {
-                fov = GetZoomedFOV(magnification, weaponFOV);
-            }
-        }
-
-        //Zoomed FOV Calculation :
-
-        float GetZoomedFOV(float MagnificationDesired, float DefaultFOV)
-        {
-            float defaultFOVRad = DefaultFOV * 0.00872664626f; // Conversion degrés -> radians (π / 360)
-            float zoomedHalfFOVRad = (float)Math.Atan(Math.Tan(defaultFOVRad) / MagnificationDesired);
-            return 2.0f * zoomedHalfFOVRad * 57.295779513f; // Conversion radians -> degrés (180 / π)
-        }
-        /// <summary>
-        /// Resets player state variables to their default values.
-        /// </summary>
-        private void ResetPlayerStateToDefault()
-        {
-            _isAimingDownSights = false;
-            _hasPipScope = false;
-            _isFiring = false;
-            _currentFOV = 90f;
-            _currentWeaponPtr = 0;
-            _lastNoRecoilWeaponPtr = 0;
-        }
-        private bool UpdateLocalPlayerInfo()
-        {
-            try
-            {
-                if ((DateTime.Now - _lastTeamCheck).TotalMilliseconds > TeamCheckInterval)
-                {
-                    _lastTeamCheck = DateTime.Now;
-
-                    try
-                    {
-                        ulong playerState = Memory.ReadPtr(_playerController + Offsets.Controller.PlayerState);
-                        ulong squadState = Memory.ReadPtr(_playerController + Offsets.PlayerController.SquadState);
-
-                        if (playerState == 0 || squadState == 0)
-                            return false;
-
-                        int teamId = Memory.ReadValue<int>(playerState + Offsets.ASQPlayerState.TeamID);
-                        int squadId = Memory.ReadValue<int>(squadState + Offsets.ASQSquadState.SquadId);
-
-                        if (_localUPlayer.TeamID != teamId || _localUPlayer.SquadID != squadId)
-                        {
-                            _localUPlayer.TeamID = teamId;
-                            _localUPlayer.SquadID = squadId;
-                        }
-                    }
-                    catch { return false; }
-                }
-                ProcessPlayerInfo();
-                GetCameraCache();
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Gets CameraCache
-        /// </summary>
-        private bool GetCameraCache()
-        {
-            try
-            {
-                var cameraInfoScatterMap = new ScatterReadMap(1);
-                var cameraManagerRound = cameraInfoScatterMap.AddRound();
-                var cameraInfoRound = cameraInfoScatterMap.AddRound();
-
-                var cameraManagerPtr = cameraManagerRound.AddEntry<ulong>(0, 0, _playerController + Offsets.PlayerController.PlayerCameraManager);
-                cameraManagerRound.AddEntry<int>(0, 11, _gameWorld + Offsets.World.WorldOrigin);
-                cameraManagerRound.AddEntry<int>(0, 12, _gameWorld + Offsets.World.WorldOrigin + 0x4);
-                cameraManagerRound.AddEntry<int>(0, 13, _gameWorld + Offsets.World.WorldOrigin + 0x8);
-                cameraInfoRound.AddEntry<Vector3>(0, 1, cameraManagerPtr, null, Offsets.Camera.CameraLocation);
-                cameraInfoRound.AddEntry<Vector3>(0, 2, cameraManagerPtr, null, Offsets.Camera.CameraRotation);
-
-                cameraInfoScatterMap.Execute();
-
-                if (!cameraInfoScatterMap.Results[0][1].TryGetResult<Vector3>(out var location))
-                {
-                    return false;
-                }
-                if (!cameraInfoScatterMap.Results[0][2].TryGetResult<Vector3>(out var rotation))
-                {
-                    return false;
-                }
-                if (cameraInfoScatterMap.Results[0][11].TryGetResult<int>(out var absoluteX)
-                && cameraInfoScatterMap.Results[0][12].TryGetResult<int>(out var absoluteY)
-                && cameraInfoScatterMap.Results[0][13].TryGetResult<int>(out var absoluteZ))
-                {
-                    _absoluteLocation = new Vector3(absoluteX, absoluteY, absoluteZ);
-                    // Program.Log(_absoluteLocation.ToString());
-                }
-                _localUPlayer.Position = location;
-                _localUPlayer.Rotation = new Vector2(rotation.Y, rotation.X);
-                _localUPlayer.Rotation3D = rotation;
-                return true;
-            }
-            catch { return false; }
         }
 
         public void LogVehicles(bool force = false)

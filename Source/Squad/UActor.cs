@@ -24,6 +24,7 @@ namespace squad_dma
         public FTransform ComponentToWorld { get; set; }
         public Dictionary<int, FTransform> BoneTransforms { get; set; } = new Dictionary<int, FTransform>();
         public Vector2[] BoneScreenPositions { get; set; }
+        public bool NeedsFullUpdate { get; set; } = true;
 
         public bool IsFriendly()
         {
@@ -47,7 +48,7 @@ namespace squad_dma
 
         public ActorType ActorType { get; set; } = ActorType.Player;
         private Vector3 _pos = new Vector3(0, 0, 0);
-        public Vector3 Position // 96 bits, cannot set atomically
+        public Vector3 Position
         {
             get
             {
@@ -65,7 +66,7 @@ namespace squad_dma
             }
         }
         public Vector2 ZoomedPosition { get; set; } = new();
-        public Vector2 Rotation { get; set; } = new Vector2(0, 0); // 64 bits will be atomic
+        public Vector2 Rotation { get; set; } = new Vector2(0, 0);
         public Vector3 Rotation3D { get; set; } = new Vector3(0, 0, 0);
         public int ErrorCount { get; set; } = 0;
 
@@ -85,6 +86,7 @@ namespace squad_dma
             Debug.WriteLine("Actor Constructor: Initialization started.");
             this.Base = actorBase;
             this.Mesh = Memory.ReadValue<ulong>(actorBase + 0x288); // Offset Mesh
+            this.BoneScreenPositions = new Vector2[19];
             //Program.Log($"Actor Mesh initialized: {this.Mesh:X}");
         }
         #endregion
