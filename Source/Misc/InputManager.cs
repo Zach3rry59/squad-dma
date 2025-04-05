@@ -48,10 +48,10 @@ namespace squad_dma
                 Program.Log($"Failed to load keyboard manager. Retrying in {DELAY}ms.");
             }
 
-            if (!hasLoggedFailure) // Logger l'échec une seule fois
+            if (!hasLoggedFailure)
             {
                 Program.Log($"Failed to initialize keyboard manager after {InputManager.MAX_ATTEMPTS} attempts. Zoom/dezoom functionality will be disabled.");
-                hasLoggedFailure = true; // Marquer que l'échec a été loggé
+                hasLoggedFailure = true;
             }
             InputManager.keyboardInitialized = false;
             return false;

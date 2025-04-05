@@ -1813,6 +1813,7 @@ namespace squad_dma
             Memory._game?.SetSuppression(chkDisableSuppression.Checked);
             Config.SaveConfig(_config);
         }
+<<<<<<< HEAD
         private void ChkSetTimeDilation_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return; // Keep this if you want in-game restriction
@@ -1821,40 +1822,90 @@ namespace squad_dma
             UpdateStatusIndicator(lblStatusSpeedHack, _config.SetSpeedHack); // Update UI
             Config.SaveConfig(_config); // Save state
         }
+=======
+>>>>>>> 8985e4d27d2362204da76568661f82b68ebcf159
 
         private void ChkSetInteractionDistances_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
+<<<<<<< HEAD
             _config.SetInteractionDistances = chkSetInteractionDistances.Checked;
             Memory._game?.SetInteractionDistances(_config.SetInteractionDistances);
             UpdateStatusIndicator(lblStatusSetInteractionDistances, _config.SetInteractionDistances);
+=======
+            if (!chkSetInteractionDistances.Checked)
+            {
+                _config.SetInteractionDistances = false;
+                Memory._game?.SetInteractionDistances(false);
+                UpdateStatusIndicator(lblStatusSetInteractionDistances, false);
+            }
+>>>>>>> 8985e4d27d2362204da76568661f82b68ebcf159
             Config.SaveConfig(_config);
         }
 
         private void ChkAllowShootingInMainBase_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
+<<<<<<< HEAD
             _config.AllowShootingInMainBase = chkAllowShootingInMainBase.Checked;
             Memory._game?.SetShootingInMainBase(_config.AllowShootingInMainBase);
             UpdateStatusIndicator(lblStatusAllowShootingInMainBase, _config.AllowShootingInMainBase);
+=======
+            if (!chkAllowShootingInMainBase.Checked)
+            {
+                _config.AllowShootingInMainBase = false;
+                Memory._game?.SetShootingInMainBase(false);
+                UpdateStatusIndicator(lblStatusAllowShootingInMainBase, false);
+            }
+            Config.SaveConfig(_config);
+        }
+
+        private void ChkSetTimeDilation_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!InGame) return;
+            if (!chkSpeedHack.Checked)
+            {
+                _config.SetSpeedHack = false;
+                Memory._game?.SetSpeedHack(false);
+                UpdateStatusIndicator(lblStatusSpeedHack, false);
+            }
+>>>>>>> 8985e4d27d2362204da76568661f82b68ebcf159
             Config.SaveConfig(_config);
         }
 
         private void ChkAirStuck_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
+<<<<<<< HEAD
             _config.SetAirStuck = chkAirStuck.Checked;
             Memory._game?.SetAirStuck(_config.SetAirStuck);
             UpdateStatusIndicator(lblStatusAirStuck, _config.SetAirStuck);
+=======
+            if (!chkAirStuck.Checked)
+            {
+                _config.SetAirStuck = false;
+                Memory._game?.SetAirStuck(false);
+                UpdateStatusIndicator(lblStatusAirStuck, false);
+            }
+>>>>>>> 8985e4d27d2362204da76568661f82b68ebcf159
             Config.SaveConfig(_config);
         }
 
         private void ChkHideActor_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
+<<<<<<< HEAD
             _config.SetHideActor = chkHideActor.Checked;
             Memory._game?.SetHideActor(_config.SetHideActor);
             UpdateStatusIndicator(lblStatusHideActor, _config.SetHideActor);
+=======
+            if (!chkHideActor.Checked)
+            {
+                _config.SetHideActor = false;
+                Memory._game?.SetHideActor(false);
+                UpdateStatusIndicator(lblStatusHideActor, false);
+            }
+>>>>>>> 8985e4d27d2362204da76568661f82b68ebcf159
             Config.SaveConfig(_config);
         }
         #endregion

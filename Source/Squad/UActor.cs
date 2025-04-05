@@ -1,4 +1,5 @@
-﻿using SkiaSharp;
+﻿using Offsets;
+using SkiaSharp;
 using System.Diagnostics;
 using System.Numerics;
 
@@ -109,8 +110,8 @@ namespace squad_dma
         {
             Debug.WriteLine("Actor Constructor: Initialization started.");
             this.Base = actorBase;
-            this.Mesh = Memory.ReadValue<ulong>(actorBase + 0x288); // Offset Mesh
             this.BoneScreenPositions = new Vector2[19];
+            this.Mesh = Memory.ReadValue<ulong>(actorBase + ASQSoldier.Mesh); // Offset Mesh
             //Program.Log($"Actor Mesh initialized: {this.Mesh:X}");
         }
         #endregion
