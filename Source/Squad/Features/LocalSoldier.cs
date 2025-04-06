@@ -1,4 +1,6 @@
 using Offsets;
+using static squad_dma.Game;
+using static Vmmsharp.LeechCore;
 
 namespace squad_dma.Source.Squad.Features
 {
@@ -6,18 +8,224 @@ namespace squad_dma.Source.Squad.Features
     {
         private readonly ulong _playerController;
         private readonly bool _inGame;
-        private CancellationTokenSource _cancellationTokenSource;
-        private bool _isSuppressionEnabled = false;
-        private bool _isInteractionDistancesEnabled = false;
-        private bool _isShootingInMainBaseEnabled = false;
-        private bool _isSpeedHackEnabled = false;
-        private bool _isAirStuckEnabled = false;
-        private bool _isHideActorEnabled = false;
-        private bool _isQuickZoomEnabled = false;
-        private bool _isRapidFireEnabled = false;
-        private bool _isInfiniteAmmoEnabled = false;
-        private bool _isQuickSwapEnabled = false;
-        private bool _isCollisionDisabled = false;
+        private readonly RegistredActors _actors;
+        private SoldierState _currentState;
+
+        private bool _isSuppressionEnabled = Program.Config.DisableSuppression;
+        private bool _isInteractionDistancesEnabled = Program.Config.SetInteractionDistances;
+        private bool _isShootingInMainBaseEnabled = Program.Config.AllowShootingInMainBase;
+        private bool _isSpeedHackEnabled = Program.Config.SetSpeedHack;
+        private bool _isAirStuckEnabled = Program.Config.SetAirStuck;
+        private bool _isHideActorEnabled = Program.Config.SetHideActor;
+        private bool _isQuickZoomEnabled = Program.Config.QuickZoom;
+        private bool _isRapidFireEnabled = Program.Config.RapidFire;
+        private bool _isInfiniteAmmoEnabled = Program.Config.InfiniteAmmo;
+        private bool _isQuickSwapEnabled = Program.Config.QuickSwap;
+        private bool _isCollisionDisabled = Program.Config.DisableCollision;
+
+        private bool _isNoRecoilEnabled = Program.Config.NoRecoil;
+        private bool _isNoSwayEnabled = Program.Config.NoSway;
+        private bool _isNoCameraShakeEnabled = Program.Config.NoCameraShake;
+
+        private ulong _currentWeaponPtr = 0;
+        private ulong _pawnPtr = 0;
+        private ulong _lastNoRecoilWeaponPtr = 0;
+
+
+
+        private readonly List<IScatterWriteEntry> _noRecoilAnimEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeapRecoilRelLoc, 0f),     // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeapRecoilRelLoc + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeapRecoilRelLoc + 8, 0f), // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MoveRecoilFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.RecoilCanRelease, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilSigma, 0f),     // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilSigma + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilSigma + 8, 0f), // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilMean, 0f),      // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilMean + 4, 0f),  // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilMean + 8, 0f),  // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilMean, 0f),      // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilMean + 4, 0f),  // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilMean + 8, 0f),  // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilSigma, 0f),     // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilSigma + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilSigma + 8, 0f), // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilMean, 0f),     // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilMean + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilMean + 8, 0f), // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilSigma, 0f),    // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilSigma + 4, 0f),// Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilSigma + 8, 0f),// Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilMean, 0f),      // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilMean + 4, 0f),  // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilMean + 8, 0f),  // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilSigma, 0f),     // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilSigma + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilSigma + 8, 0f), // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilMean, 0f), // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilMean + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilMean + 8, 0f), // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilSigma, 0f), // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilSigma + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilSigma + 8, 0f), // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunch, 0f),          // Pitch
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunch + 4, 0f),      // Yaw
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunch + 8, 0f),      // Roll
+        };
+
+        private readonly List<IScatterWriteEntry> _noRecoilWeaponEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.RecoilCameraOffsetFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.RecoilWeaponRelLocFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.AddMoveRecoil, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MaxMoveRecoilFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilMean, 0f),      // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilMean + 4, 0f),  // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilMean + 8, 0f),  // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilSigma, 0f),     // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilSigma + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilSigma + 8, 0f), // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilMean, 0f),   // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilMean + 4, 0f),// Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilMean + 8, 0f),// Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilSigma, 0f),  // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilSigma + 4, 0f),// Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilSigma + 8, 0f),// Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilMean, 0f),     // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilMean + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilMean + 8, 0f), // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilSigma, 0f),    // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilSigma + 4, 0f),// Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilSigma + 8, 0f),// Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilMean, 0f),  // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilMean + 4, 0f),// Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilMean + 8, 0f),// Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilSigma, 0f), // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilSigma + 4, 0f),// Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilSigma + 8, 0f),// Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilMean, 0f),      // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilMean + 4, 0f),  // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilMean + 8, 0f),  // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilSigma, 0f),     // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilSigma + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilSigma + 8, 0f), // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilMean, 0f),   // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilMean + 4, 0f),// Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilMean + 8, 0f),// Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilSigma, 0f),  // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilSigma + 4, 0f),// Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilSigma + 8, 0f),// Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilMean, 0f), // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilMean + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilMean + 8, 0f), // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilSigma, 0f), // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilSigma + 4, 0f), // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilSigma + 8, 0f), // Z
+        };
+
+        private readonly List<IScatterWriteEntry> _noSwayAnimEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MoveSwayFactorMultiplier, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SuppressSwayFactorMultiplier, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunchSwayCombinedRotator, 0f), // Pitch
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunchSwayCombinedRotator + 4, 0f), // Yaw
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunchSwayCombinedRotator + 8, 0f), // Roll
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.UnclampedTotalSway, 0f),
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.TotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.Sway, 0f), // Pitch
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.Sway + 4, 0f), // Yaw
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.Sway + 8, 0f), // Roll
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffset, 0f), // X
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.TotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.Sway, 0f), // Pitch
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.Sway + 4, 0f), // Yaw
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.Sway + 8, 0f), // Roll
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset, 0f), // X
+           // new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
+           // new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
+        };
+
+        private readonly List<IScatterWriteEntry> _noSwayWeaponEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.AddMoveSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MaxMoveSwayFactor, 0f),
+           // new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.TotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.Sway, 0f), // Pitch
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.Sway + 4, 0f), // Yaw
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.Sway + 8, 0f), // Roll
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffset, 0f), // X
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffsetMultiplier, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.TotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.Sway, 0f), // Pitch
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.Sway + 4, 0f), // Yaw
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.Sway + 8, 0f), // Roll
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset, 0f), // X
+           // new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 4, 0f), // Y
+            //new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.LocationOffset + 8, 0f), // Z
+        };
+
+        private readonly List<IScatterWriteEntry> _noSpreadAnimEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MoveDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalDeviation, 0f),      // X
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalDeviation + 4, 0f),  // Y
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalDeviation + 8, 0f),  // Z
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalDeviation + 12, 0f), // W
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.AddMoveDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MoveDeviationFactorRelease, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MaxMoveDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinMoveDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FullStaminaDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.LowStaminaDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.AddShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.AddShotDeviationFactorAds, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ShotDeviationFactorRelease, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MaxShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinProneAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinProneDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinCrouchAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinCrouchDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinStandAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinStandDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinProneTransitionDeviation, 0f),
+        };
+
+        private readonly List<IScatterWriteEntry> _noSpreadWeaponEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MaxShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.AddShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.AddShotDeviationFactorAds, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ShotDeviationFactorRelease, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.LowStaminaDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.FullStaminaDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MoveDeviationFactorRelease, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.AddMoveDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MaxMoveDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinMoveDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinProneAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinProneDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinCrouchAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinCrouchDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinStandAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinStandDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinProneTransitionDeviation, 0f),
+        };
 
         // Movement modes
         private enum EMovementMode : byte
@@ -42,7 +250,7 @@ namespace squad_dma.Source.Squad.Features
         private float _originalTimeBetweenSingleShots = 0.0f;
         private float _originalFov;
         private float _originalTimeDilation = 0.0f;
-        
+
         // InstantReload original values
         private byte _originalInfiniteAmmo = 0;
         private byte _originalInfiniteMags = 0;
@@ -55,7 +263,7 @@ namespace squad_dma.Source.Squad.Features
         private float _originalMaxFlySpeed = 0.0f;
         private float _originalMaxCustomMovementSpeed = 0.0f;
         private float _originalMaxAcceleration = 0.0f;
-        
+
         // HideActor original values
         private byte _originalHideActorReplicateMovement = 0;
         private byte _originalHidden = 0;
@@ -76,71 +284,187 @@ namespace squad_dma.Source.Squad.Features
         {
             _playerController = playerController;
             _inGame = inGame;
-            _cancellationTokenSource = new CancellationTokenSource();
-            StartFeatureTimer();
+            _actors = actors;
         }
 
-        // Start a timer to apply features every second
-        // Simple fix for when the Localplayer respawns
-        // Need to change it to a better solution
-        private void StartFeatureTimer()
+        public void UpdateSoldierState(SoldierState state)
         {
-            Task.Run(async () =>
-            {
-                while (!_cancellationTokenSource.Token.IsCancellationRequested)
-                {
-                    try
-                    {
-                        if (_isSuppressionEnabled)
-                            ApplySuppression();
-                        if (_isInteractionDistancesEnabled)
-                            ApplyInteractionDistances();
-                        if (_isShootingInMainBaseEnabled || _originalUsableInMainBase != false)
-                            ApplyShootingInMainBase();
-                        if (_isSpeedHackEnabled || _originalTimeDilation != 0.0f)
-                            ApplySpeedHack();
-                        if (_isAirStuckEnabled || _originalMovementMode != 0)
-                            ApplyAirStuck();
-                        
-                        // Handle DisableCollision, ensuring it's disabled if AirStuck is disabled
-                        if (!_isAirStuckEnabled && _isCollisionDisabled)
-                        {
-                            _isCollisionDisabled = false;
-                        }
-                        
-                        if (_isCollisionDisabled || _originalCollisionEnabled != 0)
-                            DisableCollision(_isCollisionDisabled);
-                            
-                        if (_isHideActorEnabled || _originalHideActorReplicateMovement != 0)
-                            HideActor();
-                        if (_isRapidFireEnabled || _originalTimeBetweenShots != 0.0f)
-                            ApplyRapidFire();
-                        if (_isInfiniteAmmoEnabled || _originalInfiniteAmmo != 0)
-                            ApplyInfiniteAmmo();
-                        if (_isQuickSwapEnabled || _originalEquipDuration != 0.0f)
-                            ApplyQuickSwap();
-                    }
-                    catch { /* Silently fail */ }
-                    await Task.Delay(1000, _cancellationTokenSource.Token);
-                }
-            }, _cancellationTokenSource.Token);
+            _currentState = state;
+            _currentWeaponPtr = state.WeaponPtr;
+
+            if (_isSuppressionEnabled) ApplySuppression();
+            if (_isInteractionDistancesEnabled) ApplyInteractionDistances();
+            if (_isNoRecoilEnabled) ApplyNoRecoilNoSpread();
+            if (_isNoSwayEnabled && state.IsAimingDownSights) ApplyNoSway();
+            if (_isNoCameraShakeEnabled && state.IsFiring) ApplyNoCameraShake();
         }
 
-        /// <summary>
-        /// Checks if the local player is valid (has a valid player state and soldier actor)
-        /// </summary>
-        /// <returns>True if local player is valid, false otherwise</returns>
         private bool IsLocalPlayerValid()
         {
-            if (!_inGame || _playerController == 0) return false;
+            if (!_inGame || _playerController == 0 || _currentState.PawnPtr == 0) return false;
             
             ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
             if (playerState == 0) return false;
 
             ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
-            if (soldierActor == 0) return false;
-            
-            return true;
+            return soldierActor != 0;
+        }
+
+        public void SetNoRecoil(bool enable)
+        {
+            if (!IsLocalPlayerValid()) return;
+            _isNoRecoilEnabled = enable;
+            if (enable) ApplyNoRecoilNoSpread();
+        }
+
+        public void SetNoSway(bool enable)
+        {
+            if (!IsLocalPlayerValid()) return;
+            _isNoSwayEnabled = enable;
+            if (enable && _currentState.IsAimingDownSights) ApplyNoSway();
+        }
+
+        public void SetNoCameraShake(bool enable)
+        {
+            if (!IsLocalPlayerValid()) return;
+            _isNoCameraShakeEnabled = enable;
+            if (enable && _currentState.IsFiring) ApplyNoCameraShake();
+        }
+
+        private bool GetBasePointers(ulong pawnPtr, out ulong animInstancePtr, out ulong weaponStaticInfoPtr)
+        {
+            animInstancePtr = 0;
+            weaponStaticInfoPtr = 0;
+
+            if (pawnPtr == 0) return false;
+
+            ulong inventoryPtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.InventoryComponent);
+            if (inventoryPtr == 0) return false;
+
+            ulong weaponPtr = Memory.ReadPtr(inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
+            if (weaponPtr == 0) return false;
+
+            animInstancePtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.CachedAnimInstance1p);
+            weaponStaticInfoPtr = Memory.ReadPtr(weaponPtr + Offsets.ASQWeapon.WeaponStaticInfo);
+
+            return animInstancePtr != 0 && weaponStaticInfoPtr != 0;
+        }
+
+        private IScatterWriteEntry UpdateEntryAddress(IScatterWriteEntry entry, ulong baseAddress)
+        {
+            if (entry is ScatterWriteDataEntry<float> floatEntry)
+            {
+                return new ScatterWriteDataEntry<float>(baseAddress + (ulong)floatEntry.Address, floatEntry.Data);
+            }
+            return entry;
+        }
+
+        public void ApplyNoRecoilNoSpread()
+        {
+            try
+            {
+                if (_currentState.PawnPtr == 0)
+                {
+                    _lastNoRecoilWeaponPtr = 0;
+                    Program.Log("No-recoil/no-spread skipped: No acknowledged pawn.");
+                    return;
+                }
+
+                string pawnClassName = Memory.GetActorClassName(_currentState.PawnPtr);
+                bool isInVehicle = !pawnClassName.Contains("BP_Soldier");
+                if (isInVehicle || _currentWeaponPtr == 0)
+                {
+                    _lastNoRecoilWeaponPtr = 0;
+                    return;
+                }
+
+                if (!GetBasePointers(_currentState.PawnPtr, out ulong animInstancePtr, out ulong weaponStaticInfoPtr))
+                {
+                    Program.Log("No-recoil/no-spread skipped: Failed to get base pointers.");
+                    return;
+                }
+
+                var scatterEntries = new List<IScatterWriteEntry>();
+
+                if (_currentWeaponPtr != _lastNoRecoilWeaponPtr || _lastNoRecoilWeaponPtr == 0)
+                {
+                    scatterEntries.AddRange(_noRecoilAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+                    scatterEntries.AddRange(_noRecoilWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+                    scatterEntries.AddRange(_noSpreadAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+                    scatterEntries.AddRange(_noSpreadWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+                    _lastNoRecoilWeaponPtr = _currentWeaponPtr;
+                    Program.Log($"No-recoil & no-spread applied for weapon 0x{_currentWeaponPtr:X}");
+                }
+
+                if (scatterEntries.Count > 0)
+                {
+                    Memory.WriteScatter(scatterEntries);
+                }
+            }
+            catch { }
+        }
+
+        public void ApplyNoSway()
+        {
+            try
+            {
+                if (!GetBasePointers(_currentState.PawnPtr, out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
+
+                var scatterEntries = new List<IScatterWriteEntry>();
+                scatterEntries.AddRange(_noSwayAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+                scatterEntries.AddRange(_noSwayWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+
+                if (scatterEntries.Count > 0)
+                {
+                    Memory.WriteScatter(scatterEntries);
+                    //Program.Log($"No-sway applied for weapon 0x{_currentWeaponPtr:X}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Failed to apply no-sway: {ex.Message}");
+            }
+        }
+
+        public void ApplyNoCameraShake()
+        {
+            try
+            {
+                var scatterEntries = new List<IScatterWriteEntry>();
+
+                ulong cameraManagerPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.PlayerCameraManager);
+                if (cameraManagerPtr == 0) return;
+                ulong cameraShakeModPtr = Memory.ReadPtr(cameraManagerPtr + Offsets.Camera.CachedCameraShakeMod);
+                if (cameraShakeModPtr != 0)
+                {
+                    ulong activeShakesDataPtr = Memory.ReadPtr(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes);
+                    if (activeShakesDataPtr != 0)
+                    {
+                        int activeShakesCount = Memory.ReadValue<int>(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes + 0x8);
+                        if (activeShakesCount > 0)
+                        {
+                            const int shakeInfoSize = 0x18;
+                            for (int i = 0; i < activeShakesCount; i++)
+                            {
+                                ulong shakeBasePtr = Memory.ReadPtr(activeShakesDataPtr + (uint)(i * shakeInfoSize));
+                                if (shakeBasePtr != 0)
+                                {
+                                    scatterEntries.Add(new ScatterWriteDataEntry<float>(shakeBasePtr + Offsets.UCameraShakeBase.ShakeScale, 0f));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (scatterEntries.Count > 0)
+                {
+                    Memory.WriteScatter(scatterEntries);
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Failed to apply no-shake: {ex.Message}");
+            }
         }
 
         public void SetSuppression(bool enable)
@@ -155,14 +479,13 @@ namespace squad_dma.Source.Squad.Features
             try
             {
                 if (!IsLocalPlayerValid()) return;
-                
+
                 ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
                 ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
                 if (soldierActor == 0) return;
 
                 if (_isSuppressionEnabled)
                 {
-                    // Store original values when first enabled
                     if (_originalUnderSuppressionPercentage == 0.0f)
                     {
                         _originalUnderSuppressionPercentage = Memory.ReadValue<float>(soldierActor + ASQSoldier.UnderSuppressionPercentage);
@@ -170,27 +493,21 @@ namespace squad_dma.Source.Squad.Features
                         _originalSuppressionMultiplier = Memory.ReadValue<float>(soldierActor + ASQSoldier.SuppressionMultiplier);
                     }
 
-                    // Apply suppression settings
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.UnderSuppressionPercentage, 0.0f);
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.MaxSuppressionPercentage, 0.0f);
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.SuppressionMultiplier, 0.0f);
                 }
-                else
-                {
-                    // Only restore if we have saved original values
-                    if (_originalUnderSuppressionPercentage != 0.0f || _originalMaxSuppressionPercentage != 0.0f || _originalSuppressionMultiplier != 0.0f)
+                else if (_originalUnderSuppressionPercentage != 0.0f || _originalMaxSuppressionPercentage != 0.0f || _originalSuppressionMultiplier != 0.0f)
                 {
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.UnderSuppressionPercentage, _originalUnderSuppressionPercentage);
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.MaxSuppressionPercentage, _originalMaxSuppressionPercentage);
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.SuppressionMultiplier, _originalSuppressionMultiplier);
-                        
-                        // Reset stored values
-                        _originalUnderSuppressionPercentage = 0.0f;
-                        _originalMaxSuppressionPercentage = 0.0f;
-                        _originalSuppressionMultiplier = 0.0f;
-                    }
+
+                    _originalUnderSuppressionPercentage = 0.0f;
+                    _originalMaxSuppressionPercentage = 0.0f;
+                    _originalSuppressionMultiplier = 0.0f;
                 }
-                Program.Log(Program.Config.DisableSuppression? "Suppression enabled" : "Suppression disabled");
+                //Program.Log(_isSuppressionEnabled ? "Suppression disabled" : "Suppression restored");
             }
             catch (Exception ex)
             {
@@ -210,36 +527,29 @@ namespace squad_dma.Source.Squad.Features
             try
             {
                 if (!IsLocalPlayerValid()) return;
-                
+
                 ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
                 ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
                 if (soldierActor == 0) return;
 
                 if (_isInteractionDistancesEnabled)
                 {
-                    // Store original values when first enabled
                     if (_originalUseInteractDistance == 0.0f)
                     {
                         _originalUseInteractDistance = Memory.ReadValue<float>(soldierActor + ASQSoldier.UseInteractDistance);
                         _originalInteractableRadiusMultiplier = Memory.ReadValue<float>(soldierActor + ASQSoldier.InteractableRadiusMultiplier);
                     }
 
-                    // Apply interaction distances settings
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.UseInteractDistance, 5000.0f);
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.InteractableRadiusMultiplier, 70.0f);
                 }
-                else
-                {
-                    // Only restore if we have saved original values
-                    if (_originalUseInteractDistance != 0.0f || _originalInteractableRadiusMultiplier != 0.0f)
+                else if (_originalUseInteractDistance != 0.0f || _originalInteractableRadiusMultiplier != 0.0f)
                 {
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.UseInteractDistance, _originalUseInteractDistance);
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.InteractableRadiusMultiplier, _originalInteractableRadiusMultiplier);
-                        
-                        // Reset stored values
-                        _originalUseInteractDistance = 0.0f;
-                        _originalInteractableRadiusMultiplier = 0.0f;
-                    }
+
+                    _originalUseInteractDistance = 0.0f;
+                    _originalInteractableRadiusMultiplier = 0.0f;
                 }
             }
             catch (Exception ex)
@@ -259,13 +569,10 @@ namespace squad_dma.Source.Squad.Features
         {
             try
             {
-                // Don't attempt any memory operations if the feature is disabled
-                // and we don't have original values to restore
-                if (!_isShootingInMainBaseEnabled && !_originalUsableInMainBase)
-                    return;
-                
+                if (!_isShootingInMainBaseEnabled && !_originalUsableInMainBase) return;
+
                 if (!IsLocalPlayerValid()) return;
-                
+
                 ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
                 ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
                 if (soldierActor == 0) return;
@@ -278,26 +585,16 @@ namespace squad_dma.Source.Squad.Features
 
                 if (_isShootingInMainBaseEnabled)
                 {
-                    // Store original value when first enabled
                     if (!_originalUsableInMainBase)
                     {
                         _originalUsableInMainBase = Memory.ReadValue<bool>(currentItemStaticInfo + ASQSoldier.bUsableInMainBase);
                     }
-
-                    // Apply setting
                     Memory.WriteValue<bool>(currentItemStaticInfo + ASQSoldier.bUsableInMainBase, true);
                 }
-                else
+                else if (_originalUsableInMainBase != false)
                 {
-                    // Only restore if we have saved original value
-                    if (_originalUsableInMainBase != false)
-                    {
-                        // Restore original value
-                        Memory.WriteValue<bool>(currentItemStaticInfo + ASQSoldier.bUsableInMainBase, _originalUsableInMainBase);
-                        
-                        // Reset stored value
-                        _originalUsableInMainBase = false;
-                    }
+                    Memory.WriteValue<bool>(currentItemStaticInfo + ASQSoldier.bUsableInMainBase, _originalUsableInMainBase);
+                    _originalUsableInMainBase = false;
                 }
             }
             catch (Exception ex)
@@ -317,39 +614,26 @@ namespace squad_dma.Source.Squad.Features
         {
             try
             {
-                // Don't attempt any memory operations if the feature is disabled
-                // and we don't have original values to restore
-                if (!_isSpeedHackEnabled && _originalTimeDilation == 0.0f)
-                    return;
-                
+                if (!_isSpeedHackEnabled && _originalTimeDilation == 0.0f) return;
+
                 if (!IsLocalPlayerValid()) return;
-                
+
                 ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
                 ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
                 if (soldierActor == 0) return;
 
                 if (_isSpeedHackEnabled)
                 {
-                    // Store original value when first enabled
                     if (_originalTimeDilation == 0.0f)
                     {
                         _originalTimeDilation = Memory.ReadValue<float>(soldierActor + Actor.CustomTimeDilation);
                     }
-
-                    // Apply speed hack setting
                     Memory.WriteValue<float>(soldierActor + Actor.CustomTimeDilation, 4.0f);
                 }
-                else
+                else if (_originalTimeDilation != 0.0f)
                 {
-                    // Only restore if we have saved original value
-                    if (_originalTimeDilation != 0.0f)
-                    {
-                        // Restore original value
-                        Memory.WriteValue<float>(soldierActor + Actor.CustomTimeDilation, _originalTimeDilation);
-                        
-                        // Reset stored value
-                        _originalTimeDilation = 0.0f;
-                    }
+                    Memory.WriteValue<float>(soldierActor + Actor.CustomTimeDilation, _originalTimeDilation);
+                    _originalTimeDilation = 0.0f;
                 }
             }
             catch (Exception ex)
@@ -365,18 +649,14 @@ namespace squad_dma.Source.Squad.Features
             ApplyAirStuck();
         }
 
-        // Die to fully reset
         private void ApplyAirStuck()
         {
             try
             {
-                // Don't attempt any memory operations if the feature is disabled
-                // and we don't have original values to restore
-                if (!_isAirStuckEnabled && _originalMovementMode == 0)
-                    return;
-                
+                if (!_isAirStuckEnabled && _originalMovementMode == 0) return;
+
                 if (!IsLocalPlayerValid()) return;
-                
+
                 ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
                 ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
                 if (soldierActor == 0) return;
@@ -386,7 +666,6 @@ namespace squad_dma.Source.Squad.Features
 
                 if (_isAirStuckEnabled)
                 {
-                    // Store original values when first enabled
                     if (_originalMovementMode == 0)
                     {
                         _originalMovementMode = Memory.ReadValue<byte>(characterMovement + CharacterMovementComponent.MovementMode);
@@ -395,10 +674,8 @@ namespace squad_dma.Source.Squad.Features
                         _originalMaxFlySpeed = Memory.ReadValue<float>(characterMovement + CharacterMovementComponent.MaxFlySpeed);
                         _originalMaxCustomMovementSpeed = Memory.ReadValue<float>(characterMovement + CharacterMovementComponent.MaxCustomMovementSpeed);
                         _originalMaxAcceleration = Memory.ReadValue<float>(characterMovement + CharacterMovementComponent.MaxAcceleration);
-                        
                     }
 
-                    // Apply air stuck settings
                     Memory.WriteValue<byte>(characterMovement + CharacterMovementComponent.MovementMode, (byte)EMovementMode.MOVE_Flying);
                     Memory.WriteValue<byte>(characterMovement + Character.ReplicatedMovementMode, (byte)EMovementMode.MOVE_Flying);
                     Memory.WriteValue<byte>(soldierActor + Actor.bReplicateMovement, 0);
@@ -406,27 +683,21 @@ namespace squad_dma.Source.Squad.Features
                     Memory.WriteValue<float>(characterMovement + CharacterMovementComponent.MaxCustomMovementSpeed, 4000.0f);
                     Memory.WriteValue<float>(characterMovement + CharacterMovementComponent.MaxAcceleration, 4000.0f);
                 }
-                else
+                else if (_originalMovementMode != 0)
                 {
-                    // Only restore if we have saved original values
-                    if (_originalMovementMode != 0)
-                    {
-                        // Restore original values
-                        Memory.WriteValue<byte>(characterMovement + CharacterMovementComponent.MovementMode, _originalMovementMode);
-                        Memory.WriteValue<byte>(characterMovement + Character.ReplicatedMovementMode, _originalReplicatedMovementMode);
-                        Memory.WriteValue<byte>(soldierActor + Actor.bReplicateMovement, _originalReplicateMovement);
-                        Memory.WriteValue<float>(characterMovement + CharacterMovementComponent.MaxFlySpeed, _originalMaxFlySpeed);
-                        Memory.WriteValue<float>(characterMovement + CharacterMovementComponent.MaxCustomMovementSpeed, _originalMaxCustomMovementSpeed);
-                        Memory.WriteValue<float>(characterMovement + CharacterMovementComponent.MaxAcceleration, _originalMaxAcceleration);
-                                                
-                        // Reset stored values
-                        _originalMovementMode = 0;
-                        _originalReplicatedMovementMode = 0;
-                        _originalReplicateMovement = 0;
-                        _originalMaxFlySpeed = 0.0f;
-                        _originalMaxCustomMovementSpeed = 0.0f;
-                        _originalMaxAcceleration = 0.0f;
-                    }
+                    Memory.WriteValue<byte>(characterMovement + CharacterMovementComponent.MovementMode, _originalMovementMode);
+                    Memory.WriteValue<byte>(characterMovement + Character.ReplicatedMovementMode, _originalReplicatedMovementMode);
+                    Memory.WriteValue<byte>(soldierActor + Actor.bReplicateMovement, _originalReplicateMovement);
+                    Memory.WriteValue<float>(characterMovement + CharacterMovementComponent.MaxFlySpeed, _originalMaxFlySpeed);
+                    Memory.WriteValue<float>(characterMovement + CharacterMovementComponent.MaxCustomMovementSpeed, _originalMaxCustomMovementSpeed);
+                    Memory.WriteValue<float>(characterMovement + CharacterMovementComponent.MaxAcceleration, _originalMaxAcceleration);
+
+                    _originalMovementMode = 0;
+                    _originalReplicatedMovementMode = 0;
+                    _originalReplicateMovement = 0;
+                    _originalMaxFlySpeed = 0.0f;
+                    _originalMaxCustomMovementSpeed = 0.0f;
+                    _originalMaxAcceleration = 0.0f;
                 }
             }
             catch (Exception ex)
@@ -442,23 +713,27 @@ namespace squad_dma.Source.Squad.Features
             ApplyQuickZoom();
         }
 
-        public void ApplyQuickZoom()
+        private void ApplyQuickZoom()
         {
             try
             {
                 if (!IsLocalPlayerValid()) return;
-                
+
                 ulong cameraManager = Memory.ReadPtr(_playerController + PlayerController.PlayerCameraManager);
                 if (cameraManager == 0) return;
-                
+
                 if (_isQuickZoomEnabled)
                 {
-                    _originalFov = Memory.ReadValue<float>(cameraManager + PlayerCameraManager.DefaultFOV);
+                    if (_originalFov == 0.0f)
+                    {
+                        _originalFov = Memory.ReadValue<float>(cameraManager + PlayerCameraManager.DefaultFOV);
+                    }
                     Memory.WriteValue<float>(cameraManager + PlayerCameraManager.DefaultFOV, 20.0f);
                 }
-                else
+                else if (_originalFov != 0.0f)
                 {
                     Memory.WriteValue<float>(cameraManager + PlayerCameraManager.DefaultFOV, _originalFov);
+                    _originalFov = 0.0f;
                 }
             }
             catch (Exception ex)
@@ -466,6 +741,7 @@ namespace squad_dma.Source.Squad.Features
                 Program.Log($"Error setting Quick Zoom: {ex.Message}");
             }
         }
+
         public void SetHideActor(bool enable)
         {
             if (!IsLocalPlayerValid()) return;
@@ -477,41 +753,32 @@ namespace squad_dma.Source.Squad.Features
         {
             try
             {
-                if (!_isHideActorEnabled && _originalHideActorReplicateMovement == 0)
-                    return;
-                
+                if (!_isHideActorEnabled && _originalHideActorReplicateMovement == 0) return;
+
                 if (!IsLocalPlayerValid()) return;
-                
+
                 ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
                 ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
                 if (soldierActor == 0) return;
 
                 if (_isHideActorEnabled)
                 {
-                    // Store original values when first enabled
                     if (_originalHideActorReplicateMovement == 0)
                     {
                         _originalHideActorReplicateMovement = Memory.ReadValue<byte>(soldierActor + Actor.bReplicateMovement);
                         _originalHidden = Memory.ReadValue<byte>(soldierActor + Actor.bHidden);
                     }
 
-                    // Apply hide actor settings
                     Memory.WriteValue<byte>(soldierActor + Actor.bReplicateMovement, 0);
                     Memory.WriteValue<byte>(soldierActor + Actor.bHidden, 1);
                 }
-                else
+                else if (_originalHideActorReplicateMovement != 0)
                 {
-                    // Only restore if we have saved original values
-                    if (_originalHideActorReplicateMovement != 0)
-                    {
-                        // Restore original values
-                        Memory.WriteValue<byte>(soldierActor + Actor.bReplicateMovement, _originalHideActorReplicateMovement);
-                        Memory.WriteValue<byte>(soldierActor + Actor.bHidden, _originalHidden);
-                        
-                        // Reset stored values
-                        _originalHideActorReplicateMovement = 0;
-                        _originalHidden = 0;
-                    }
+                    Memory.WriteValue<byte>(soldierActor + Actor.bReplicateMovement, _originalHideActorReplicateMovement);
+                    Memory.WriteValue<byte>(soldierActor + Actor.bHidden, _originalHidden);
+
+                    _originalHideActorReplicateMovement = 0;
+                    _originalHidden = 0;
                 }
             }
             catch (Exception ex)
@@ -520,28 +787,22 @@ namespace squad_dma.Source.Squad.Features
             }
         }
 
-        /// <summary>
-        /// Enables or disables collision for the soldier actor
-        /// </summary>
-        /// <param name="disable">True to disable collision, false to restore normal collision</param>
         public void DisableCollision(bool disable)
         {
             if (!IsLocalPlayerValid()) return;
-            
-            // Only allow enabling if AirStuck is enabled
+
             if (disable && !_isAirStuckEnabled)
             {
-                // If AirStuck is disabled, ensure DisableCollision is also disabled
                 _isCollisionDisabled = false;
                 return;
             }
-            
+
             _isCollisionDisabled = disable;
-            
+
             try
             {
                 if (!IsLocalPlayerValid()) return;
-                
+
                 ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
                 ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
                 if (soldierActor == 0) return;
@@ -549,24 +810,18 @@ namespace squad_dma.Source.Squad.Features
                 ulong rootComponent = Memory.ReadPtr(soldierActor + Actor.RootComponent);
                 if (rootComponent == 0) return;
 
-                // Access the FBodyInstance struct which is at offset 0x2c8 in UPrimitiveComponent
-                // CollisionEnabled is at offset 0x20 in FBodyInstance
                 ulong bodyInstanceAddr = rootComponent + 0x2c8;
-                
+
                 if (disable)
                 {
-                    // Store original value if we haven't already
                     if (_originalCollisionEnabled == 0)
                     {
                         _originalCollisionEnabled = Memory.ReadValue<byte>(bodyInstanceAddr + 0x20);
                     }
-                    
-                    // Set to NoCollision (0)
                     Memory.WriteValue<byte>(bodyInstanceAddr + 0x20, 0);
                 }
                 else if (_originalCollisionEnabled != 0)
                 {
-                    // Restore original value
                     Memory.WriteValue<byte>(bodyInstanceAddr + 0x20, _originalCollisionEnabled);
                     _originalCollisionEnabled = 0;
                 }
@@ -588,13 +843,10 @@ namespace squad_dma.Source.Squad.Features
         {
             try
             {
-                // Don't attempt any memory operations if the feature is disabled
-                // and we don't have original values to restore
-                if (!_isRapidFireEnabled && _originalTimeBetweenShots == 0.0f)
-                    return;
-                
+                if (!_isRapidFireEnabled && _originalTimeBetweenShots == 0.0f) return;
+
                 if (!IsLocalPlayerValid()) return;
-                
+
                 ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
                 ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
                 if (soldierActor == 0) return;
@@ -604,35 +856,27 @@ namespace squad_dma.Source.Squad.Features
 
                 ulong currentWeapon = Memory.ReadPtr(inventoryComponent + USQPawnInventoryComponent.CurrentWeapon);
                 if (currentWeapon == 0) return;
-                
+
                 ulong weaponConfigOffset = currentWeapon + ASQWeapon.WeaponConfig;
 
                 if (_isRapidFireEnabled)
                 {
-                    // Store original values when first enabled
                     if (_originalTimeBetweenShots == 0.0f)
                     {
                         _originalTimeBetweenShots = Memory.ReadValue<float>(weaponConfigOffset + FSQWeaponData.TimeBetweenShots);
                         _originalTimeBetweenSingleShots = Memory.ReadValue<float>(weaponConfigOffset + FSQWeaponData.TimeBetweenSingleShots);
                     }
 
-                    // Apply rapid fire settings
                     Memory.WriteValue<float>(weaponConfigOffset + FSQWeaponData.TimeBetweenShots, 0.01f);
                     Memory.WriteValue<float>(weaponConfigOffset + FSQWeaponData.TimeBetweenSingleShots, 0.01f);
                 }
-                else
+                else if (_originalTimeBetweenShots != 0.0f)
                 {
-                    // Only restore if we have saved original values
-                    if (_originalTimeBetweenShots != 0.0f)
-                    {
-                        // Restore original values
-                        Memory.WriteValue<float>(weaponConfigOffset + FSQWeaponData.TimeBetweenShots, _originalTimeBetweenShots);
-                        Memory.WriteValue<float>(weaponConfigOffset + FSQWeaponData.TimeBetweenSingleShots, _originalTimeBetweenSingleShots);
-                        
-                        // Reset stored values
-                        _originalTimeBetweenShots = 0.0f;
-                        _originalTimeBetweenSingleShots = 0.0f;
-                    }
+                    Memory.WriteValue<float>(weaponConfigOffset + FSQWeaponData.TimeBetweenShots, _originalTimeBetweenShots);
+                    Memory.WriteValue<float>(weaponConfigOffset + FSQWeaponData.TimeBetweenSingleShots, _originalTimeBetweenSingleShots);
+
+                    _originalTimeBetweenShots = 0.0f;
+                    _originalTimeBetweenSingleShots = 0.0f;
                 }
             }
             catch (Exception ex)
@@ -652,13 +896,10 @@ namespace squad_dma.Source.Squad.Features
         {
             try
             {
-                // Don't attempt any memory operations if the feature is disabled
-                // and we don't have original values to restore
-                if (!_isInfiniteAmmoEnabled && _originalInfiniteAmmo == 0)
-                    return;
-                
+                if (!_isInfiniteAmmoEnabled && _originalInfiniteAmmo == 0) return;
+
                 if (!IsLocalPlayerValid()) return;
-                
+
                 ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
                 ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
                 if (soldierActor == 0) return;
@@ -668,12 +909,11 @@ namespace squad_dma.Source.Squad.Features
 
                 ulong currentWeapon = Memory.ReadPtr(inventoryComponent + USQPawnInventoryComponent.CurrentWeapon);
                 if (currentWeapon == 0) return;
-                
+
                 ulong weaponConfigOffset = currentWeapon + ASQWeapon.WeaponConfig;
 
                 if (_isInfiniteAmmoEnabled)
                 {
-                    // Store original values when first enabled
                     if (_originalInfiniteAmmo == 0)
                     {
                         _originalInfiniteAmmo = Memory.ReadValue<byte>(weaponConfigOffset + FSQWeaponData.bInfiniteAmmo);
@@ -681,26 +921,19 @@ namespace squad_dma.Source.Squad.Features
                         _originalCreateProjectileOnServer = Memory.ReadValue<byte>(weaponConfigOffset + FSQWeaponData.bCreateProjectileOnServer);
                     }
 
-                    // Apply infinite ammo settings
                     Memory.WriteValue<byte>(weaponConfigOffset + FSQWeaponData.bInfiniteAmmo, 1);
                     Memory.WriteValue<byte>(weaponConfigOffset + FSQWeaponData.bInfiniteMags, 1);
                     Memory.WriteValue<byte>(weaponConfigOffset + FSQWeaponData.bCreateProjectileOnServer, 1);
                 }
-                else
+                else if (_originalInfiniteAmmo != 0)
                 {
-                    // Only restore if we have saved original values
-                    if (_originalInfiniteAmmo != 0)
-                    {
-                        // Restore original values
-                        Memory.WriteValue<byte>(weaponConfigOffset + FSQWeaponData.bInfiniteAmmo, _originalInfiniteAmmo);
-                        Memory.WriteValue<byte>(weaponConfigOffset + FSQWeaponData.bInfiniteMags, _originalInfiniteMags);
-                        Memory.WriteValue<byte>(weaponConfigOffset + FSQWeaponData.bCreateProjectileOnServer, _originalCreateProjectileOnServer);
-                                                
-                        // Reset stored values
-                        _originalInfiniteAmmo = 0;
-                        _originalInfiniteMags = 0;
-                        _originalCreateProjectileOnServer = 0;
-                    }
+                    Memory.WriteValue<byte>(weaponConfigOffset + FSQWeaponData.bInfiniteAmmo, _originalInfiniteAmmo);
+                    Memory.WriteValue<byte>(weaponConfigOffset + FSQWeaponData.bInfiniteMags, _originalInfiniteMags);
+                    Memory.WriteValue<byte>(weaponConfigOffset + FSQWeaponData.bCreateProjectileOnServer, _originalCreateProjectileOnServer);
+
+                    _originalInfiniteAmmo = 0;
+                    _originalInfiniteMags = 0;
+                    _originalCreateProjectileOnServer = 0;
                 }
             }
             catch (Exception ex)
@@ -709,10 +942,6 @@ namespace squad_dma.Source.Squad.Features
             }
         }
 
-        /// <summary>
-        /// Sets whether quick weapon swapping is enabled
-        /// </summary>
-        /// <param name="enable">Whether to enable quick weapon swapping</param>
         public void SetQuickSwap(bool enable)
         {
             if (!IsLocalPlayerValid()) return;
@@ -720,33 +949,26 @@ namespace squad_dma.Source.Squad.Features
             ApplyQuickSwap();
         }
 
-        /// <summary>
-        /// Applies or removes quick weapon swapping
-        /// </summary>
         private void ApplyQuickSwap()
         {
             try
             {
-                // Don't attempt any memory operations if the feature is disabled
-                // and we don't have original values to restore
-                if (!_isQuickSwapEnabled && _originalEquipDuration == 0.0f)
-                    return;
-                
+                if (!_isQuickSwapEnabled && _originalEquipDuration == 0.0f) return;
+
                 if (!IsLocalPlayerValid()) return;
-                
+
                 ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
                 ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
                 if (soldierActor == 0) return;
-                
+
                 ulong inventoryComponent = Memory.ReadPtr(soldierActor + ASQSoldier.InventoryComponent);
                 if (inventoryComponent == 0) return;
-                
+
                 ulong currentWeapon = Memory.ReadPtr(inventoryComponent + USQPawnInventoryComponent.CurrentWeapon);
                 if (currentWeapon == 0) return;
-                
+
                 if (_isQuickSwapEnabled)
                 {
-                    // Store original values when first enabled
                     if (_originalEquipDuration == 0.0f)
                     {
                         _originalEquipDuration = Memory.ReadValue<float>(currentWeapon + ASQEquipableItem.EquipDuration);
@@ -754,30 +976,24 @@ namespace squad_dma.Source.Squad.Features
                         _originalCachedEquipDuration = Memory.ReadValue<float>(currentWeapon + ASQEquipableItem.CachedEquipDuration);
                         _originalCachedUnequipDuration = Memory.ReadValue<float>(currentWeapon + ASQEquipableItem.CachedUnequipDuration);
                     }
-                    
+
                     const float FAST_SWAP_VALUE = 0.01f;
                     Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.EquipDuration, FAST_SWAP_VALUE);
                     Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.UnequipDuration, FAST_SWAP_VALUE);
                     Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.CachedEquipDuration, FAST_SWAP_VALUE);
                     Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.CachedUnequipDuration, FAST_SWAP_VALUE);
                 }
-                else
+                else if (_originalEquipDuration != 0.0f)
                 {
-                    // Only restore if we have saved original values
-                    if (_originalEquipDuration != 0.0f)
-                    {
-                        // Restore original values
-                        Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.EquipDuration, _originalEquipDuration);
-                        Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.UnequipDuration, _originalUnequipDuration);
-                        Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.CachedEquipDuration, _originalCachedEquipDuration);
-                        Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.CachedUnequipDuration, _originalCachedUnequipDuration);
-                        
-                        // Reset stored values
-                        _originalEquipDuration = 0.0f;
-                        _originalUnequipDuration = 0.0f;
-                        _originalCachedEquipDuration = 0.0f;
-                        _originalCachedUnequipDuration = 0.0f;
-                    }
+                    Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.EquipDuration, _originalEquipDuration);
+                    Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.UnequipDuration, _originalUnequipDuration);
+                    Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.CachedEquipDuration, _originalCachedEquipDuration);
+                    Memory.WriteValue<float>(currentWeapon + ASQEquipableItem.CachedUnequipDuration, _originalCachedUnequipDuration);
+
+                    _originalEquipDuration = 0.0f;
+                    _originalUnequipDuration = 0.0f;
+                    _originalCachedEquipDuration = 0.0f;
+                    _originalCachedUnequipDuration = 0.0f;
                 }
             }
             catch (Exception ex)
@@ -788,53 +1004,42 @@ namespace squad_dma.Source.Squad.Features
 
         public void Dispose()
         {
-            _cancellationTokenSource?.Cancel();
-            _cancellationTokenSource?.Dispose();
+            // No timer to cancel, so this is simpler now
         }
-        
-        /// <summary>
-        /// Reads and logs just the essential weapon name information
-        /// </summary>
-        /// <param name="soldierActor">The soldier actor address</param>
-        /// <param name="label">Label for logging</param>
+
         private void ReadWeaponInfo(ulong soldierActor, string label)
         {
             try
             {
-                // Get inventory component
                 ulong inventoryComponent = Memory.ReadPtr(soldierActor + ASQSoldier.InventoryComponent);
                 if (inventoryComponent == 0) return;
-                
-                // Get current weapon
+
                 ulong currentWeapon = Memory.ReadPtr(inventoryComponent + USQPawnInventoryComponent.CurrentWeapon);
                 if (currentWeapon == 0) return;
-                
+
                 Program.Log($"{label} Weapon:");
-                
-                // Get weapon object name 
+
                 try
                 {
                     int nameIndex = Memory.ReadValue<int>(currentWeapon + 0x18);
                     Dictionary<uint, string> names = Memory.GetNamesById(new List<uint> { (uint)nameIndex });
-                    
+
                     if (names.ContainsKey((uint)nameIndex))
                     {
                         string weaponName = names[(uint)nameIndex];
                         Program.Log($"  - Object: {weaponName}");
                     }
                 }
-                catch { /* Silently fail */ }
-                
-                // Get static info name
+                catch { }
+
                 try
                 {
                     ulong itemStaticInfo = Memory.ReadPtr(currentWeapon + ASQEquipableItem.ItemStaticInfo);
-                    
                     if (itemStaticInfo != 0)
                     {
                         int staticInfoNameIndex = Memory.ReadValue<int>(itemStaticInfo + 0x18);
                         Dictionary<uint, string> names = Memory.GetNamesById(new List<uint> { (uint)staticInfoNameIndex });
-                        
+
                         if (names.ContainsKey((uint)staticInfoNameIndex))
                         {
                             string infoName = names[(uint)staticInfoNameIndex];
@@ -842,41 +1047,34 @@ namespace squad_dma.Source.Squad.Features
                         }
                     }
                 }
-                catch { /* Silently fail */ }
+                catch { }
             }
-            catch { /* Silently fail */ }
+            catch { }
         }
-        
-        /// <summary>
-        /// Reads and logs the current weapon of the local player and optionally other players
-        /// </summary>
-        /// <param name="includeOtherPlayers">Whether to include other players' weapons in the log</param>
+
         public void ReadCurrentWeapons(bool includeOtherPlayers = false)
         {
             try
             {
                 if (!IsLocalPlayerValid()) return;
-                
+
                 Program.Log("=== READING CURRENT WEAPONS ===");
-                
-                // Get local player's weapon
+
                 ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
                 ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
                 if (soldierActor == 0) return;
-                
+
                 ReadWeaponInfo(soldierActor, "Local Player");
-                
-                // If requested, try to find a few other players by team
+
                 if (includeOtherPlayers)
                 {
-                    // This is a simplified approach that doesn't rely on traversing the player array
                     int localTeamId = Memory.ReadValue<int>(playerState + ASQPlayerState.TeamID);
                     Program.Log($"Local player is on team: {localTeamId}");
                 }
-                
+
                 Program.Log("=============================");
             }
-            catch { /* Silently fail */ }
+            catch { }
         }
     }
-} 
+}
