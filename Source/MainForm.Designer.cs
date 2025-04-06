@@ -37,6 +37,7 @@ namespace squad_dma
             btnDumpNames = new Button();
             trkUIScale = new TrackBar();
             trkAimLength = new TrackBar();
+            trkTechMarkerScale = new TrackBar();
             chkShowMapSetup = new CheckBox();
             btnToggleMap = new Button();
             btnRestartRadar = new Button();
@@ -90,8 +91,9 @@ namespace squad_dma
             btnKeybindZoomOut = new Button();
             lblStatusQuickZoom = new Label();
             grpUserInterface = new GroupBox();
-            lblAimline = new Label();
             lblUIScale = new Label();
+            lblAimline = new Label();
+            lblTechMarkerScale = new Label();
             grpRadar = new GroupBox();
             grpEsp = new GroupBox();
             chkEnableEsp = new CheckBox();
@@ -127,6 +129,7 @@ namespace squad_dma
             tabControl = new TabControl();
             ((System.ComponentModel.ISupportInitialize)trkUIScale).BeginInit();
             ((System.ComponentModel.ISupportInitialize)trkAimLength).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)trkTechMarkerScale).BeginInit();
             tabSettings.SuspendLayout();
             grpConfig.SuspendLayout();
             grpWriteSettings.SuspendLayout();
@@ -149,7 +152,7 @@ namespace squad_dma
             // 
             chkShowEnemyDistance.AutoSize = true;
             chkShowEnemyDistance.Font = new Font("Segoe UI", 9F);
-            chkShowEnemyDistance.Location = new Point(265, 86);
+            chkShowEnemyDistance.Location = new Point(265, 50);
             chkShowEnemyDistance.Name = "chkShowEnemyDistance";
             chkShowEnemyDistance.Size = new Size(165, 19);
             chkShowEnemyDistance.TabIndex = 15;
@@ -160,7 +163,7 @@ namespace squad_dma
             // btnDumpNames
             // 
             btnDumpNames.Font = new Font("Segoe UI", 9F);
-            btnDumpNames.Location = new Point(265, 50);
+            btnDumpNames.Location = new Point(265, 80);
             btnDumpNames.Name = "btnDumpNames";
             btnDumpNames.Size = new Size(200, 30);
             btnDumpNames.TabIndex = 16;
@@ -172,7 +175,7 @@ namespace squad_dma
             // trkUIScale
             // 
             trkUIScale.LargeChange = 10;
-            trkUIScale.Location = new Point(15, 50);
+            trkUIScale.Location = new Point(15, 49);
             trkUIScale.Maximum = 200;
             trkUIScale.Minimum = 50;
             trkUIScale.Name = "trkUIScale";
@@ -188,12 +191,12 @@ namespace squad_dma
             // trkAimLength
             // 
             trkAimLength.LargeChange = 50;
-            trkAimLength.Location = new Point(15, 125);
+            trkAimLength.Location = new Point(14, 121);
             trkAimLength.Margin = new Padding(4, 3, 4, 3);
             trkAimLength.Maximum = 2000;
             trkAimLength.Minimum = 10;
             trkAimLength.Name = "trkAimLength";
-            trkAimLength.Size = new Size(200, 45);
+            trkAimLength.Size = new Size(201, 45);
             trkAimLength.SmallChange = 5;
             trkAimLength.TabIndex = 11;
             trkAimLength.TickFrequency = 50;
@@ -201,6 +204,22 @@ namespace squad_dma
             toolTip.SetToolTip(trkAimLength, "Adjust the length of the aimline");
             trkAimLength.Value = 500;
             trkAimLength.Scroll += trkAimLength_Scroll;
+            // 
+            // trkTechMarkerScale
+            // 
+            trkTechMarkerScale.LargeChange = 10;
+            trkTechMarkerScale.Location = new Point(15, 185);
+            trkTechMarkerScale.Maximum = 200;
+            trkTechMarkerScale.Minimum = 50;
+            trkTechMarkerScale.Name = "trkTechMarkerScale";
+            trkTechMarkerScale.Size = new Size(200, 45);
+            trkTechMarkerScale.SmallChange = 5;
+            trkTechMarkerScale.TabIndex = 17;
+            trkTechMarkerScale.TickFrequency = 10;
+            trkTechMarkerScale.TickStyle = TickStyle.None;
+            toolTip.SetToolTip(trkTechMarkerScale, "Adjust the size of vehicle and tech markers");
+            trkTechMarkerScale.Value = 100;
+            trkTechMarkerScale.Scroll += trkTechMarkerScale_Scroll;
             // 
             // chkShowMapSetup
             // 
@@ -299,7 +318,7 @@ namespace squad_dma
             tabSettings.Location = new Point(4, 24);
             tabSettings.Name = "tabSettings";
             tabSettings.Padding = new Padding(3);
-            tabSettings.Size = new Size(1289, 791);
+            tabSettings.Size = new Size(1888, 911);
             tabSettings.TabIndex = 1;
             tabSettings.Text = "Settings";
             tabSettings.UseVisualStyleBackColor = true;
@@ -316,7 +335,7 @@ namespace squad_dma
             grpConfig.Margin = new Padding(15);
             grpConfig.Name = "grpConfig";
             grpConfig.Padding = new Padding(15);
-            grpConfig.Size = new Size(1283, 785);
+            grpConfig.Size = new Size(1882, 905);
             grpConfig.TabIndex = 8;
             grpConfig.TabStop = false;
             grpConfig.Text = "Radar Config";
@@ -757,6 +776,8 @@ namespace squad_dma
             grpUserInterface.Controls.Add(trkUIScale);
             grpUserInterface.Controls.Add(chkShowEnemyDistance);
             grpUserInterface.Controls.Add(btnDumpNames);
+            grpUserInterface.Controls.Add(lblTechMarkerScale);
+            grpUserInterface.Controls.Add(trkTechMarkerScale);
             grpUserInterface.Location = new Point(5, 23);
             grpUserInterface.Name = "grpUserInterface";
             grpUserInterface.Padding = new Padding(15);
@@ -765,26 +786,36 @@ namespace squad_dma
             grpUserInterface.TabStop = false;
             grpUserInterface.Text = "User Interface";
             // 
+            // lblUIScale
+            // 
+            lblUIScale.AutoSize = true;
+            lblUIScale.Font = new Font("Segoe UI", 9F);
+            lblUIScale.Location = new Point(15, 31);
+            lblUIScale.Name = "lblUIScale";
+            lblUIScale.Size = new Size(48, 15);
+            lblUIScale.TabIndex = 13;
+            lblUIScale.Text = "UI Scale";
+            // 
             // lblAimline
             // 
             lblAimline.AutoSize = true;
             lblAimline.Font = new Font("Segoe UI", 9F);
-            lblAimline.Location = new Point(15, 107);
+            lblAimline.Location = new Point(15, 103);
             lblAimline.Name = "lblAimline";
             lblAimline.Size = new Size(88, 15);
             lblAimline.TabIndex = 12;
             lblAimline.Text = "Aimline Length";
             lblAimline.Click += lblAimline_Click;
             // 
-            // lblUIScale
+            // lblTechMarkerScale
             // 
-            lblUIScale.AutoSize = true;
-            lblUIScale.Font = new Font("Segoe UI", 9F);
-            lblUIScale.Location = new Point(15, 30);
-            lblUIScale.Name = "lblUIScale";
-            lblUIScale.Size = new Size(48, 15);
-            lblUIScale.TabIndex = 13;
-            lblUIScale.Text = "UI Scale";
+            lblTechMarkerScale.AutoSize = true;
+            lblTechMarkerScale.Font = new Font("Segoe UI", 9F);
+            lblTechMarkerScale.Location = new Point(15, 167);
+            lblTechMarkerScale.Name = "lblTechMarkerScale";
+            lblTechMarkerScale.Size = new Size(104, 15);
+            lblTechMarkerScale.TabIndex = 18;
+            lblTechMarkerScale.Text = "Vehicle/Tech Scale";
             // 
             // grpRadar
             // 
@@ -1074,7 +1105,7 @@ namespace squad_dma
             tabRadar.Location = new Point(4, 24);
             tabRadar.Name = "tabRadar";
             tabRadar.Padding = new Padding(3);
-            tabRadar.Size = new Size(1289, 862);
+            tabRadar.Size = new Size(1888, 911);
             tabRadar.TabIndex = 0;
             tabRadar.Text = "Radar";
             tabRadar.UseVisualStyleBackColor = true;
@@ -1084,7 +1115,7 @@ namespace squad_dma
             ticketsPanel.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             ticketsPanel.BackColor = SystemColors.ScrollBar;
             ticketsPanel.BorderStyle = BorderStyle.FixedSingle;
-            ticketsPanel.Location = new Point(9, 836);
+            ticketsPanel.Location = new Point(8, 875);
             ticketsPanel.Name = "ticketsPanel";
             ticketsPanel.Size = new Size(285, 30);
             ticketsPanel.TabIndex = 12;
@@ -1145,20 +1176,21 @@ namespace squad_dma
             tabControl.Location = new Point(0, 0);
             tabControl.Name = "tabControl";
             tabControl.SelectedIndex = 0;
-            tabControl.Size = new Size(1297, 819);
+            tabControl.Size = new Size(1896, 939);
             tabControl.TabIndex = 8;
             // 
             // MainForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(1297, 819);
+            ClientSize = new Size(1896, 939);
             Controls.Add(tabControl);
             Margin = new Padding(4, 3, 4, 3);
             Name = "MainForm";
             Text = "Squad DMA";
             ((System.ComponentModel.ISupportInitialize)trkUIScale).EndInit();
             ((System.ComponentModel.ISupportInitialize)trkAimLength).EndInit();
+            ((System.ComponentModel.ISupportInitialize)trkTechMarkerScale).EndInit();
             tabSettings.ResumeLayout(false);
             grpConfig.ResumeLayout(false);
             grpWriteSettings.ResumeLayout(false);
@@ -1283,6 +1315,8 @@ namespace squad_dma
         private Label lblKeybindQuickZoom;
         private Button btnKeybindQuickZoom;
         private Label lblStatusQuickZoom;
+        private Label lblTechMarkerScale;
+        private TrackBar trkTechMarkerScale;
 
         private void BtnKeybindZoomIn_Click(object sender, EventArgs e)
         {

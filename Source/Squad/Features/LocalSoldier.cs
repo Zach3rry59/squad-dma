@@ -4,30 +4,35 @@ using static Vmmsharp.LeechCore;
 
 namespace squad_dma.Source.Squad.Features
 {
-    public class LocalSoldier
+    public class LocalSoldier : IDisposable
     {
         private readonly ulong _playerController;
         private readonly bool _inGame;
         private readonly RegistredActors _actors;
         private SoldierState _currentState;
 
+        private CancellationTokenSource _cancellationTokenSource;
+
         private bool _isSuppressionEnabled = Program.Config.DisableSuppression;
-        private bool _isInteractionDistancesEnabled = Program.Config.SetInteractionDistances;
-        private bool _isShootingInMainBaseEnabled = Program.Config.AllowShootingInMainBase;
-        private bool _isSpeedHackEnabled = Program.Config.SetSpeedHack;
-        private bool _isAirStuckEnabled = Program.Config.SetAirStuck;
-        private bool _isHideActorEnabled = Program.Config.SetHideActor;
-        private bool _isQuickZoomEnabled = Program.Config.QuickZoom;
-        private bool _isRapidFireEnabled = Program.Config.RapidFire;
-        private bool _isInfiniteAmmoEnabled = Program.Config.InfiniteAmmo;
-        private bool _isQuickSwapEnabled = Program.Config.QuickSwap;
-        private bool _isCollisionDisabled = Program.Config.DisableCollision;
+        private bool _isInteractionDistancesEnabled = false;
+        private bool _isShootingInMainBaseEnabled = false;
+        private bool _isSpeedHackEnabled = false;
+        private bool _isAirStuckEnabled = false;
+        private bool _isHideActorEnabled = false;
+        private bool _isQuickZoomEnabled = false;
+        private bool _isRapidFireEnabled = false;
+        private bool _isInfiniteAmmoEnabled = false;
+        private bool _isQuickSwapEnabled = false;
+        private bool _isCollisionDisabled = false;
 
         private bool _isNoRecoilEnabled = Program.Config.NoRecoil;
         private bool _isNoSwayEnabled = Program.Config.NoSway;
         private bool _isNoCameraShakeEnabled = Program.Config.NoCameraShake;
 
         private ulong _currentWeaponPtr = 0;
+        private ulong _currentInventoryPtr = 0;
+        private ulong _cachedPlayerState = 0;
+        private ulong _cachedSoldierActor = 0;
         private ulong _pawnPtr = 0;
         private ulong _lastNoRecoilWeaponPtr = 0;
 
@@ -280,20 +285,64 @@ namespace squad_dma.Source.Squad.Features
         // ShootingInMainBase original values
         private bool _originalUsableInMainBase = false;
 
+        private void StartFeatureTimer()
+        {
+            Task.Run(async () =>
+            {
+                while (!_cancellationTokenSource.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        if (_isSuppressionEnabled)
+                            ApplySuppression();
+                        if (_isInteractionDistancesEnabled)
+                            ApplyInteractionDistances();
+                        if (_isShootingInMainBaseEnabled || _originalUsableInMainBase != false)
+                            ApplyShootingInMainBase();
+                        if (_isSpeedHackEnabled || _originalTimeDilation != 0.0f)
+                            ApplySpeedHack();
+                        if (_isAirStuckEnabled || _originalMovementMode != 0)
+                            ApplyAirStuck();
+
+                        // Handle DisableCollision, ensuring it's disabled if AirStuck is disabled
+                        if (!_isAirStuckEnabled && _isCollisionDisabled)
+                        {
+                            _isCollisionDisabled = false;
+                        }
+
+                        if (_isCollisionDisabled || _originalCollisionEnabled != 0)
+                            DisableCollision(_isCollisionDisabled);
+
+                        if (_isHideActorEnabled || _originalHideActorReplicateMovement != 0)
+                            HideActor();
+                        if (_isRapidFireEnabled || _originalTimeBetweenShots != 0.0f)
+                            ApplyRapidFire();
+                        if (_isInfiniteAmmoEnabled || _originalInfiniteAmmo != 0)
+                            ApplyInfiniteAmmo();
+                        if (_isQuickSwapEnabled || _originalEquipDuration != 0.0f)
+                            ApplyQuickSwap();
+                    }
+                    catch { /* Silently fail */ }
+                    await Task.Delay(1000, _cancellationTokenSource.Token);
+                }
+            }, _cancellationTokenSource.Token);
+        }
+
         public LocalSoldier(ulong playerController, bool inGame, RegistredActors actors)
         {
             _playerController = playerController;
             _inGame = inGame;
             _actors = actors;
+            _cancellationTokenSource = new CancellationTokenSource();
+            StartFeatureTimer();
         }
 
         public void UpdateSoldierState(SoldierState state)
         {
             _currentState = state;
             _currentWeaponPtr = state.WeaponPtr;
+            _currentInventoryPtr = state.InventoryPtr;
 
-            if (_isSuppressionEnabled) ApplySuppression();
-            if (_isInteractionDistancesEnabled) ApplyInteractionDistances();
             if (_isNoRecoilEnabled) ApplyNoRecoilNoSpread();
             if (_isNoSwayEnabled && state.IsAimingDownSights) ApplyNoSway();
             if (_isNoCameraShakeEnabled && state.IsFiring) ApplyNoCameraShake();
@@ -301,13 +350,23 @@ namespace squad_dma.Source.Squad.Features
 
         private bool IsLocalPlayerValid()
         {
-            if (!_inGame || _playerController == 0 || _currentState.PawnPtr == 0) return false;
-            
-            ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-            if (playerState == 0) return false;
+            try
+            {
+                if (!_inGame || _playerController == 0 || _currentState.PawnPtr == 0) return false;
 
-            ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
-            return soldierActor != 0;
+                if (_currentState.PawnPtr == 0) return false;
+                _pawnPtr = _currentState.PawnPtr;
+
+                _cachedPlayerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
+                if (_cachedPlayerState == 0) return false;
+
+                _cachedSoldierActor = Memory.ReadPtr(_cachedPlayerState + ASQPlayerState.Soldier);
+                if (_cachedSoldierActor == 0) return false;
+
+                return true;
+            }
+            catch
+            { return false; }
         }
 
         public void SetNoRecoil(bool enable)
@@ -331,21 +390,18 @@ namespace squad_dma.Source.Squad.Features
             if (enable && _currentState.IsFiring) ApplyNoCameraShake();
         }
 
-        private bool GetBasePointers(ulong pawnPtr, out ulong animInstancePtr, out ulong weaponStaticInfoPtr)
+        private bool GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)
         {
             animInstancePtr = 0;
             weaponStaticInfoPtr = 0;
 
-            if (pawnPtr == 0) return false;
+            if (_pawnPtr == 0 || _currentWeaponPtr == 0) return false;
 
-            ulong inventoryPtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.InventoryComponent);
-            if (inventoryPtr == 0) return false;
+            _currentInventoryPtr = Memory.ReadPtr(_pawnPtr + Offsets.ASQSoldier.InventoryComponent);
+            if (_currentInventoryPtr == 0) return false;
 
-            ulong weaponPtr = Memory.ReadPtr(inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
-            if (weaponPtr == 0) return false;
-
-            animInstancePtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.CachedAnimInstance1p);
-            weaponStaticInfoPtr = Memory.ReadPtr(weaponPtr + Offsets.ASQWeapon.WeaponStaticInfo);
+            animInstancePtr = Memory.ReadPtr(_pawnPtr + Offsets.ASQSoldier.CachedAnimInstance1p);
+            weaponStaticInfoPtr = Memory.ReadPtr(_currentWeaponPtr + Offsets.ASQWeapon.WeaponStaticInfo);
 
             return animInstancePtr != 0 && weaponStaticInfoPtr != 0;
         }
@@ -363,7 +419,7 @@ namespace squad_dma.Source.Squad.Features
         {
             try
             {
-                if (_currentState.PawnPtr == 0)
+                if (_pawnPtr == 0)
                 {
                     _lastNoRecoilWeaponPtr = 0;
                     Program.Log("No-recoil/no-spread skipped: No acknowledged pawn.");
@@ -378,7 +434,7 @@ namespace squad_dma.Source.Squad.Features
                     return;
                 }
 
-                if (!GetBasePointers(_currentState.PawnPtr, out ulong animInstancePtr, out ulong weaponStaticInfoPtr))
+                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr))
                 {
                     Program.Log("No-recoil/no-spread skipped: Failed to get base pointers.");
                     return;
@@ -408,7 +464,7 @@ namespace squad_dma.Source.Squad.Features
         {
             try
             {
-                if (!GetBasePointers(_currentState.PawnPtr, out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
+                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
 
                 var scatterEntries = new List<IScatterWriteEntry>();
                 scatterEntries.AddRange(_noSwayAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
@@ -480,9 +536,8 @@ namespace squad_dma.Source.Squad.Features
             {
                 if (!IsLocalPlayerValid()) return;
 
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
-                if (soldierActor == 0) return;
+                ulong soldierActor = _cachedSoldierActor;
+                if (_cachedSoldierActor == 0) return;
 
                 if (_isSuppressionEnabled)
                 {
@@ -528,8 +583,7 @@ namespace squad_dma.Source.Squad.Features
             {
                 if (!IsLocalPlayerValid()) return;
 
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
+                ulong soldierActor = _cachedSoldierActor;
                 if (soldierActor == 0) return;
 
                 if (_isInteractionDistancesEnabled)
@@ -573,8 +627,7 @@ namespace squad_dma.Source.Squad.Features
 
                 if (!IsLocalPlayerValid()) return;
 
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
+                ulong soldierActor = _cachedSoldierActor;
                 if (soldierActor == 0) return;
 
                 ulong inventoryComponent = Memory.ReadPtr(soldierActor + ASQSoldier.InventoryComponent);
@@ -618,8 +671,7 @@ namespace squad_dma.Source.Squad.Features
 
                 if (!IsLocalPlayerValid()) return;
 
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
+                ulong soldierActor = _cachedSoldierActor;
                 if (soldierActor == 0) return;
 
                 if (_isSpeedHackEnabled)
@@ -657,8 +709,7 @@ namespace squad_dma.Source.Squad.Features
 
                 if (!IsLocalPlayerValid()) return;
 
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
+                ulong soldierActor = _cachedSoldierActor;
                 if (soldierActor == 0) return;
 
                 ulong characterMovement = Memory.ReadPtr(soldierActor + Character.CharacterMovement);
@@ -757,8 +808,7 @@ namespace squad_dma.Source.Squad.Features
 
                 if (!IsLocalPlayerValid()) return;
 
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
+                ulong soldierActor = _cachedSoldierActor;
                 if (soldierActor == 0) return;
 
                 if (_isHideActorEnabled)
@@ -803,8 +853,7 @@ namespace squad_dma.Source.Squad.Features
             {
                 if (!IsLocalPlayerValid()) return;
 
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
+                ulong soldierActor = _cachedSoldierActor;
                 if (soldierActor == 0) return;
 
                 ulong rootComponent = Memory.ReadPtr(soldierActor + Actor.RootComponent);
@@ -847,8 +896,7 @@ namespace squad_dma.Source.Squad.Features
 
                 if (!IsLocalPlayerValid()) return;
 
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
+                ulong soldierActor = _cachedSoldierActor;
                 if (soldierActor == 0) return;
 
                 ulong inventoryComponent = Memory.ReadPtr(soldierActor + ASQSoldier.InventoryComponent);
@@ -900,8 +948,7 @@ namespace squad_dma.Source.Squad.Features
 
                 if (!IsLocalPlayerValid()) return;
 
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
+                ulong soldierActor = _cachedSoldierActor;
                 if (soldierActor == 0) return;
 
                 ulong inventoryComponent = Memory.ReadPtr(soldierActor + ASQSoldier.InventoryComponent);
@@ -957,14 +1004,13 @@ namespace squad_dma.Source.Squad.Features
 
                 if (!IsLocalPlayerValid()) return;
 
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
+                ulong soldierActor = _cachedSoldierActor;
                 if (soldierActor == 0) return;
 
-                ulong inventoryComponent = Memory.ReadPtr(soldierActor + ASQSoldier.InventoryComponent);
+                ulong inventoryComponent = _currentInventoryPtr;
                 if (inventoryComponent == 0) return;
 
-                ulong currentWeapon = Memory.ReadPtr(inventoryComponent + USQPawnInventoryComponent.CurrentWeapon);
+                ulong currentWeapon = _currentWeaponPtr;
                 if (currentWeapon == 0) return;
 
                 if (_isQuickSwapEnabled)
@@ -1004,17 +1050,25 @@ namespace squad_dma.Source.Squad.Features
 
         public void Dispose()
         {
-            // No timer to cancel, so this is simpler now
+            _pawnPtr = 0;
+            _currentWeaponPtr = 0;
+            _currentInventoryPtr = 0;
+            _cachedPlayerState = 0;
+            _cachedSoldierActor = 0;
+            _pawnPtr = 0;
+            _lastNoRecoilWeaponPtr = 0;
+            _cancellationTokenSource?.Cancel();
+            _cancellationTokenSource?.Dispose();
         }
 
         private void ReadWeaponInfo(ulong soldierActor, string label)
         {
             try
             {
-                ulong inventoryComponent = Memory.ReadPtr(soldierActor + ASQSoldier.InventoryComponent);
+                ulong inventoryComponent = _currentInventoryPtr;
                 if (inventoryComponent == 0) return;
 
-                ulong currentWeapon = Memory.ReadPtr(inventoryComponent + USQPawnInventoryComponent.CurrentWeapon);
+                ulong currentWeapon = _currentWeaponPtr;
                 if (currentWeapon == 0) return;
 
                 Program.Log($"{label} Weapon:");
@@ -1060,15 +1114,14 @@ namespace squad_dma.Source.Squad.Features
 
                 Program.Log("=== READING CURRENT WEAPONS ===");
 
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
+                ulong soldierActor = _cachedSoldierActor;
                 if (soldierActor == 0) return;
 
                 ReadWeaponInfo(soldierActor, "Local Player");
 
                 if (includeOtherPlayers)
                 {
-                    int localTeamId = Memory.ReadValue<int>(playerState + ASQPlayerState.TeamID);
+                    int localTeamId = Memory.ReadValue<int>(_cachedPlayerState + ASQPlayerState.TeamID);
                     Program.Log($"Local player is on team: {localTeamId}");
                 }
 

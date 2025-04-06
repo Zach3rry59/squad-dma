@@ -22,6 +22,7 @@ namespace squad_dma
     public class MapParameters
     {
         public float UIScale;
+        public float TechScale;
         public int MapLayerIndex;
         public SKRect Bounds;
         public float XScale;
@@ -77,6 +78,7 @@ namespace squad_dma
     {
         public MapPosition() { }
         public float UIScale = 0;
+        public float TechScale = 0;  // Added tech marker scale
         public float X = 0;
         public float Y = 0;
         public float Height = 0;
@@ -202,6 +204,9 @@ namespace squad_dma
             {
                 scale *= 1.5f; // Enlarge
             }
+
+            // Apply tech marker scale from config
+            scale *= TechScale;
 
             if (!Names.BitMaps.TryGetValue(actor.ActorType, out SKBitmap skBitMap))
             {

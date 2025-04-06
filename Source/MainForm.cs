@@ -750,7 +750,7 @@ namespace squad_dma
             txtFirstScopeMag.Text = _config.FirstScopeMagnification.ToString("F1");
             txtSecondScopeMag.Text = _config.SecondScopeMagnification.ToString("F1");
             txtThirdScopeMag.Text = _config.ThirdScopeMagnification.ToString("F1");
-
+            trkTechMarkerScale.Value = _config.TechMarkerScale;
             #endregion
 
             #region Local Soldier Features
@@ -804,6 +804,53 @@ namespace squad_dma
                 await Task.Delay(1);
 
             _mapCanvas.GRContext.SetResourceCacheLimit(1610612736); // Fixes low FPS on big maps
+
+            // Apply settings once game is ready
+            if (Memory.Ready && Memory.InGame)
+            {
+                // Wait for the local player to be fully initialized
+                for (int i = 0; i < 10; i++) // Try for a few seconds
+                {
+                    if (Memory._game != null)
+                    {
+                        // Make sure features are applied after the player is fully loaded
+                        await Task.Delay(1000); // Give a bit more time for everything to initialize
+                        
+                        if (_config.DisableSuppression)
+                            Memory._game?.SetSuppression(true);
+                        
+                        if (_config.SetInteractionDistances)
+                            Memory._game?.SetInteractionDistances(true);
+                        
+                        if (_config.AllowShootingInMainBase)
+                            Memory._game?.SetShootingInMainBase(true);
+                        
+                        if (_config.SetSpeedHack)
+                            Memory._game?.SetSpeedHack(true);
+                        
+                        if (_config.SetAirStuck)
+                            Memory._game?.SetAirStuck(true);
+                        
+                        if (_config.SetHideActor)
+                            Memory._game?.SetHideActor(true);
+                            
+                        if (_config.RapidFire)
+                            Memory._game?.SetRapidFire(true);
+                            
+                        if (_config.InfiniteAmmo)
+                            Memory._game?.SetInfiniteAmmo(true);
+                            
+                        if (_config.QuickSwap)
+                            Memory._game?.SetQuickSwap(true);
+                            
+                        if (_config.DisableCollision)
+                            Memory._game?.DisableCollision(true);
+                            
+                            break;
+                    }
+                    await Task.Delay(500);
+                }
+            }
 
             while (true)
             {
@@ -1067,6 +1114,7 @@ namespace squad_dma
             return new MapParameters
             {
                 UIScale = _uiScale,
+                TechScale = (.01f * _config.TechMarkerScale),
                 MapLayerIndex = mapLayerIndex,
                 Bounds = bounds,
                 XScale = (float)_mapCanvas.Width / bounds.Width, // Set scale for this frame
@@ -1084,7 +1132,13 @@ namespace squad_dma
 
                 if (_isFreeMapToggled)
                 {
-                    _mapPanPosition.Height = localPlayerMapPos.Height;
+                    _mapPanPosition = new MapPosition()
+                    {
+                        X = localPlayerMapPos.X,
+                        Y = localPlayerMapPos.Y,
+                        Height = localPlayerMapPos.Height,
+                        TechScale = (.01f * _config.TechMarkerScale)
+                    };
                     return GetMapParameters(_mapPanPosition);
                 }
                 else
@@ -1708,7 +1762,8 @@ namespace squad_dma
                         {
                             X = localPlayerMapPos.X,
                             Y = localPlayerMapPos.Y,
-                            Height = localPlayerMapPos.Height
+                            Height = localPlayerMapPos.Height,
+                            TechScale = (.01f * _config.TechMarkerScale)
                         };
                     }
                 }
@@ -1837,6 +1892,20 @@ namespace squad_dma
             _uiScale = (.01f * trkUIScale.Value);
 
             InitiateUIScaling();
+        }
+
+        private void trkTechMarkerScale_Scroll(object sender, EventArgs e)
+        {
+            _config.TechMarkerScale = trkTechMarkerScale.Value;
+            
+            // Update the MapPanPosition for free map mode
+            if (_isFreeMapToggled)
+            {
+                _mapPanPosition.TechScale = .01f * _config.TechMarkerScale;
+            }
+            
+            _mapCanvas.Invalidate();
+            Config.SaveConfig(_config);
         }
 
         private void ChkDisableSuppression_CheckedChanged(object sender, EventArgs e)

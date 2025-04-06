@@ -26,6 +26,15 @@ namespace squad_dma
         [JsonPropertyName("uiScale")]
         public int UIScale { get; set; } = 100;
 
+        [JsonPropertyName("techMarkerScale")]
+        public int TechMarkerScale { get; set; } = 100;
+
+        [JsonPropertyName("zoomInKey")]
+        public Keys ZoomInKey { get; set; } = Keys.Up;
+
+        [JsonPropertyName("zoomOutKey")]
+        public Keys ZoomOutKey { get; set; } = Keys.Down;
+
         [JsonPropertyName("zoomStep")]
         public int ZoomStep { get; set; } = 1;
 

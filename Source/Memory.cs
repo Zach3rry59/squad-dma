@@ -478,9 +478,19 @@ namespace squad_dma
         /// </summary>
         public static ulong ReadPtr(ulong ptr)
         {
-            var addr = ReadValue<ulong>(ptr);
-            if (addr == 0x0) throw new NullPtrException();
-            else return addr;
+            try
+            {
+                // Check if input pointer is null
+                if (ptr == 0) return 0;
+                
+                var addr = ReadValue<ulong>(ptr);
+                // Just return the address even if it's zero
+                return addr;
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         /// <summary>

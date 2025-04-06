@@ -34,6 +34,7 @@ namespace squad_dma
         {
             public ulong PawnPtr;
             public ulong WeaponPtr;
+            public ulong InventoryPtr;
             public bool IsAimingDownSights;
             public bool IsFiring;
             public float CameraFOV;
@@ -201,6 +202,8 @@ namespace squad_dma
         {
             Program.Log("Game has ended!");
             this._inGame = false;
+            _localSoldier?.Dispose();
+            _localSoldier = null;
             Memory.GameStatus = GameStatus.Menu;
             Memory.Restart();
         }
@@ -332,20 +335,21 @@ namespace squad_dma
 
             if (isInVehicle)
             {
+                _currentFOV = state.CameraFOV;
                 state.CurrentFOV = state.CameraFOV;
                 return state;
             }
 
             var scatterMap = new ScatterReadMap(1);
-            ulong inventoryPtr = Memory.ReadPtr(state.PawnPtr + Offsets.ASQSoldier.InventoryComponent);
-            if (inventoryPtr == 0)
+            state.InventoryPtr = Memory.ReadPtr(state.PawnPtr + Offsets.ASQSoldier.InventoryComponent);
+            if (state.InventoryPtr == 0)
             {
                 state.CurrentFOV = state.CameraFOV;
                 return state;
             }
 
             var round1 = scatterMap.AddRound();
-            var weaponPtrEntry = round1.AddEntry<ulong>(0, 0, inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
+            var weaponPtrEntry = round1.AddEntry<ulong>(0, 0, state.InventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
             scatterMap.Execute();
 
             if (!scatterMap.Results[0][0].TryGetResult<ulong>(out state.WeaponPtr) || state.WeaponPtr == 0)
