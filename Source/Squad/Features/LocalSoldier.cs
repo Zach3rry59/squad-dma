@@ -1057,6 +1057,7 @@ namespace squad_dma.Source.Squad.Features
             _cachedSoldierActor = 0;
             _pawnPtr = 0;
             _lastNoRecoilWeaponPtr = 0;
+            _currentState = new SoldierState();
             _cancellationTokenSource?.Cancel();
             _cancellationTokenSource?.Dispose();
         }

@@ -22,16 +22,6 @@
         public const uint CurrentLayer = 0x568;
     }
 
-    public struct AGameStateBase
-    {
-	    public const uint PlayerArray = 0x240; // TArray<APlayerState*>
-    }
-
-    public struct APlayerState
-    {
-        public const uint APawn = 0x288; // TArray<APlayerState*>
-    }
-
     public struct SQLayer {
         public const uint LevelID = 0x70;
     }
@@ -99,6 +89,25 @@
         public const uint SceneComponentTransform = 0x270;
         public const uint SquadState = 0x5A8; // ASQSquadState*
         public const uint TeamState = 0x590; // ASQTeamState*
+    }
+
+    public struct APlayerState
+    {
+        public const uint Score = 0x228; // float
+        public const uint PlayerId = 0x22c; // int32
+        public const uint Ping = 0x230; // uint8
+        public const uint bShouldUpdateReplicatedPing = 0x232; // uint8
+        public const uint bIsSpectator = 0x232; // uint8
+        public const uint bOnlySpectator = 0x232; // uint8
+        public const uint bIsABot = 0x232; // uint8
+        public const uint bIsInactive = 0x232; // uint8
+        public const uint bFromPreviousLevel = 0x232; // uint8
+        public const uint StartTime = 0x234; // int32
+        public const uint EngineMessageClass = 0x238; // TSubclassOf<ULocalMessage*>
+        public const uint SavedNetworkAddress = 0x248; // FString
+        public const uint UniqueID = 0x258; // FUniqueNetIdRepl
+        public const uint PawnPrivate = 0x288; // APawn*
+        public const uint PlayerNamePrivate = 0x308; // FString
     }
 
     public struct PlayerCameraManager

@@ -14,7 +14,8 @@ namespace squad_dma
 
         #region PlayerProperties
         public uint NameId { get; set; }
-        public string Name { get; set; }
+        public string Name { get; set; } // Class name ("BP_Soldier_UAF")
+        public string Nickname { get; set; } // In-game player name ("Player123")
         public float Health { get; set; } = -1;
         public int TeamID { get; set; } = -1;
         public int SquadID { get; set; } = -1;
