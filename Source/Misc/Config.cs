@@ -51,6 +51,9 @@ namespace squad_dma
         [JsonPropertyName("espShowHealth")]
         public bool EspShowHealth { get; set; }
 
+        [JsonPropertyName("espShowBox")]
+        public bool EspShowBox { get; set; }
+
         [JsonPropertyName("showNames")]
         public bool ShowNames { get; set; }
         [JsonPropertyName("espMaxDistance")]
@@ -198,6 +201,7 @@ namespace squad_dma
             ESPFontSize = 10f;
             EspShowDistance = true;
             EspShowHealth = false;
+            EspShowBox = false;
             EspMaxDistance = 1000f; // 1000M is max
             EspTextColor = DefaultPaintColors["EspText"];
             EnableEsp = true;
