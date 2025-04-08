@@ -1,7 +1,6 @@
 ﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Vmmsharp;
@@ -22,14 +21,13 @@ namespace squad_dma
         private static Thread _workerThread;
         private static CancellationTokenSource _workerCancellationTokenSource;
         private static uint _pid;
-        public static ulong _squadBase;
+        private static ulong _squadBase;
         public static Game _game;
-        private static int _ticksCounter = 0;
         private static volatile int _ticks = 0;
         private static readonly Stopwatch _tickSw = new();
         private static readonly ManualResetEvent _syncProcessRunning = new(false);
         private static readonly Stopwatch _processCheckTimer = new();
-        private const int PROCESS_CHECK_INTERVAL = 2000;
+        private const int PROCESS_CHECK_INTERVAL = 1000;
 
         public static GameStatus GameStatus = GameStatus.NotFound;
 
@@ -260,30 +258,30 @@ namespace squad_dma
         {
             try
             {
-                if (!GetModuleBase())
+                if (!GetPid() || !GetModuleBase())
                 {
-                    Program.Log($"Process {_pid} is no longer running!");
+                    Program.Log("Process or module base no longer available!");
                     return false;
                 }
 
-                var scatterMap = new ScatterReadMap(2);
+                var scatterMap = new ScatterReadMap(1);
                 var baseCheckRound = scatterMap.AddRound();
-                baseCheckRound.AddEntry<ulong>(0, 0, _squadBase);
-                baseCheckRound.AddEntry<string>(0, 1, _squadBase, 32); // Read module header
+                baseCheckRound.AddEntry<string>(0, 0, _squadBase, 8);
 
                 scatterMap.Execute();
 
-                if (!scatterMap.Results[0][1].TryGetResult<string>(out var moduleHeader) ||
+                if (!scatterMap.Results[0][0].TryGetResult<string>(out var moduleHeader) ||
                     !moduleHeader.StartsWith("MZ"))
                 {
-                    Program.Log("Module header verification failed!");
+                    Program.Log("Module header verification failed - game may have terminated!");
                     return false;
                 }
 
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                Program.Log($"Process verification error: {ex.Message}");
                 return false;
             }
         }
@@ -298,15 +296,13 @@ namespace squad_dma
                 while (true)
                 {
                     Program.Log("Attempting to find Squad Process...");
-                    bool firstAttempt = true;
+
                     while (!Memory.GetPid() || !Memory.GetModuleBase())
                     {
                         Memory.GameStatus = GameStatus.NotFound;
                         _syncProcessRunning.Reset();
-                        var delay = firstAttempt ? 15000 : 5000;
-                        Program.Log($"Squad startup failed, trying again in {delay / 1000} seconds...");
-                        Thread.Sleep(delay);
-                        firstAttempt = false;
+                        Program.Log("Squad not found, checking again in 1 second...");
+                        Thread.Sleep(1000);
                     }
 
                     Program.Log("Squad process located! Startup successful.");
@@ -325,7 +321,6 @@ namespace squad_dma
 
                             while (Memory.GameStatus == GameStatus.InGame && _running)
                             {
-                                // Periodic process verification
                                 if (_processCheckTimer.ElapsedMilliseconds > PROCESS_CHECK_INTERVAL)
                                 {
                                     if (!VerifyRunningProcess())
@@ -482,7 +477,7 @@ namespace squad_dma
             {
                 // Check if input pointer is null
                 if (ptr == 0) return 0;
-                
+
                 var addr = ReadValue<ulong>(ptr);
                 // Just return the address even if it's zero
                 return addr;
@@ -491,6 +486,15 @@ namespace squad_dma
             {
                 return 0;
             }
+        }
+
+        /// <summary>
+        /// Resolves a pointer and returns the memory address it points to.
+        /// </summary>
+        public static ulong ReadPtrNullable(ulong ptr)
+        {
+            var addr = ReadValue<ulong>(ptr);
+            return addr;
         }
 
         /// <summary>
@@ -539,6 +543,20 @@ namespace squad_dma
             }
         }
 
+        public static string GetActorClassName(ulong actorPtr)
+        {
+            try
+            {
+                var id = ReadValue<uint>(actorPtr + Offsets.Actor.ID);
+                var names = GetNamesById(new uint[] { id }.ToList());
+                return names.ContainsKey(id) ? names[id] : "Unknown";
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Error retrieving Actor name : {ex.Message}");
+                return "Unknown";
+            }
+        }
         public static Dictionary<uint, string> GetNamesById(List<uint> addresses)
         {
             var count = addresses.Count;
@@ -690,21 +708,6 @@ namespace squad_dma
                 Program.Log("Closing down Memory Thread...");
                 _running = false;
                 Memory.StopMemoryWorker();
-            }
-        }
-
-        public static string GetActorClassName(ulong actorPtr)
-        {
-            try
-            {
-                var id = ReadValue<uint>(actorPtr + Offsets.Actor.ID);
-                var names = GetNamesById(new uint[] { id }.ToList());
-                return names.ContainsKey(id) ? names[id] : "Unknown";
-            }
-            catch (Exception ex)
-            {
-                Program.Log($"Error retrieving Actor name : {ex.Message}");
-                return "Unknown";
             }
         }
 

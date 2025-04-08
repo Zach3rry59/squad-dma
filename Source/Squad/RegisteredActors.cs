@@ -249,7 +249,6 @@ namespace squad_dma
         {
             lock (_updateLock)
             {
-               
                 try
                 {
                     var count = _actors.Count;
@@ -285,7 +284,7 @@ namespace squad_dma
 
                             var meshPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 11, actorAddr + Offsets.ASQSoldier.Mesh);
                             meshRound.AddEntry<FTransform>(i, 12, meshPtr, null, 0x1C0); // ComponentToWorld
-                            var boneArrayPtr = meshRound.AddEntry<ulong>(i, 13, meshPtr, null, 0x4B0);
+                            var boneArrayPtr = meshRound.AddEntry<ulong>(i, 13, meshPtr, null, 0x4B0); // hardcodded offsets didn't find in dumpspace
 
                             for (int j = 0; j < boneIds.Length; j++)
                             {
@@ -297,10 +296,13 @@ namespace squad_dma
                             playerInstanceInfoRound.AddEntry<float>(i, 2, actorAddr + Offsets.SQDeployable.Health);
                             playerInstanceInfoRound.AddEntry<float>(i, 3, actorAddr + Offsets.SQDeployable.MaxHealth);
                         }
-                        else
+                        else // Vehicle
                         {
                             playerInstanceInfoRound.AddEntry<float>(i, 2, actorAddr + Offsets.SQVehicle.Health);
                             playerInstanceInfoRound.AddEntry<float>(i, 3, actorAddr + Offsets.SQVehicle.MaxHealth);
+                            // Vehicle TeamID retrieval
+                            var claimedBySquadPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 14, actorAddr + 0x530); // hardcodded VehicleClaimedBySquadOffset
+                            teamInfoRound.AddEntry<int>(i, 15, claimedBySquadPtr, null, 0x2AC); // hardcodded SquadStateTeamIdOffset
                         }
 
                         instigatorAndRootRound.AddEntry<Vector3>(i, 4, rootComponent, null, Offsets.USceneComponent.RelativeLocation);
@@ -451,6 +453,28 @@ namespace squad_dma
                                 actor.Mesh = 0;
                                 actor.BoneScreenPositions = new Vector2[boneIds.Length];
                                 Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
+                            }
+                        }
+                        else if (!Names.Deployables.Contains(actor.ActorType)) // Vehicle
+                        {
+                            // Retrieve Vehicle TeamID
+                            if (results.TryGetValue(14, out var claimedBySquadResult) &&
+                                claimedBySquadResult.TryGetResult<ulong>(out var claimedBySquad) &&
+                                claimedBySquad != 0)
+                            {
+                                if (results.TryGetValue(15, out var vehicleTeamResult) &&
+                                    vehicleTeamResult.TryGetResult<int>(out var vehicleTeamId))
+                                {
+                                    actor.TeamID = vehicleTeamId;
+                                }
+                                else
+                                {
+                                    actor.TeamID = -1; // Fallback if TeamID read fails
+                                }
+                            }
+                            else
+                            {
+                                actor.TeamID = -1; // Unclaimed vehicle
                             }
                         }
 
