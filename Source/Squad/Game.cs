@@ -696,7 +696,7 @@ public bool InGame => _inGame;
             }
             return entry;
         }
-
+        private static bool _noPawnMessageShown = false;
         public void ApplyNoRecoilNoSpread()
         {
             try
@@ -705,8 +705,12 @@ public bool InGame => _inGame;
                 if (pawnPtr == 0)
                 {
                     _lastNoRecoilWeaponPtr = 0;
-                    Program.Log("No-recoil/no-spread skipped: No acknowledged pawn.");
-                    return;
+
+                    if (!_noPawnMessageShown)
+                    {
+                        Program.Log("No-recoil/no-spread skipped: No acknowledged pawn.");
+                        _noPawnMessageShown = true;
+                    }
                 }
 
                 // Check if the player is in a vehicle

@@ -279,8 +279,8 @@ namespace squad_dma
                     {
                         playerInstanceInfoRound.AddEntry<float>(i, 2, actorAddr + Offsets.SQVehicle.Health);
                         playerInstanceInfoRound.AddEntry<float>(i, 3, actorAddr + Offsets.SQVehicle.MaxHealth);
-                        var claimedBySquadPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 14, actorAddr + 0x530);
-                        teamInfoRound.AddEntry<int>(i, 15, claimedBySquadPtr, null, 0x2AC);
+                        var claimedBySquadPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 14, actorAddr + 0x530); //Hardcoded
+                        teamInfoRound.AddEntry<int>(i, 15, claimedBySquadPtr, null, 0x2AC); //Hardcoded
                     }
 
                     instigatorAndRootRound.AddEntry<Vector3>(i, 4, rootComponent, null, Offsets.USceneComponent.RelativeLocation);
@@ -460,6 +460,28 @@ namespace squad_dma
                             actor.Mesh = 0;
                             actor.BoneScreenPositions = new Vector2[boneIds.Length];
                             Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
+                        }
+                    }
+                    else if (!Names.Deployables.Contains(actor.ActorType)) // Vehicle
+                    {
+                        // Retrieve Vehicle TeamID
+                        if (results.TryGetValue(14, out var claimedBySquadResult) &&
+                            claimedBySquadResult.TryGetResult<ulong>(out var claimedBySquad) &&
+                            claimedBySquad != 0)
+                        {
+                            if (results.TryGetValue(15, out var vehicleTeamResult) &&
+                                vehicleTeamResult.TryGetResult<int>(out var vehicleTeamId))
+                            {
+                                actor.TeamID = vehicleTeamId;
+                            }
+                            else
+                            {
+                                actor.TeamID = -1; // Fallback if TeamID read fails
+                            }
+                        }
+                        else
+                        {
+                            actor.TeamID = -1; // Unclaimed vehicle
                         }
                     }
 
