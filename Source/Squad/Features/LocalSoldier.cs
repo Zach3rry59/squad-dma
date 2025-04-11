@@ -415,6 +415,8 @@ namespace squad_dma.Source.Squad.Features
             return entry;
         }
 
+        private bool _noPawnLoggedOnce = false;
+
         public void ApplyNoRecoilNoSpread()
         {
             try
@@ -422,7 +424,11 @@ namespace squad_dma.Source.Squad.Features
                 if (_pawnPtr == 0)
                 {
                     _lastNoRecoilWeaponPtr = 0;
-                    Program.Log("No-recoil/no-spread skipped: No acknowledged pawn.");
+                    if (!_noPawnLoggedOnce)
+                    {
+                        Program.Log("No-recoil/no-spread skipped: No acknowledged pawn.");
+                        _noPawnLoggedOnce = true;
+                    }
                     return;
                 }
 
@@ -450,6 +456,9 @@ namespace squad_dma.Source.Squad.Features
                     scatterEntries.AddRange(_noSpreadWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
                     _lastNoRecoilWeaponPtr = _currentWeaponPtr;
                     Program.Log($"No-recoil & no-spread applied for weapon 0x{_currentWeaponPtr:X}");
+
+                    // reset the flag since it successfully applied
+                    _noPawnLoggedOnce = false;
                 }
 
                 if (scatterEntries.Count > 0)

@@ -173,7 +173,7 @@ namespace squad_dma
 
                     RenderFrame();
                     int elapsedMs = (int)stopwatch.ElapsedMilliseconds;
-                    int targetMs = 6; // ~60 FPS
+                    int targetMs = 8; // 16 = ~60 FPS 6 = 144 FPS
                     int sleepMs = Math.Max(1, targetMs - elapsedMs);
                     //Program.Log($"Frame time: {elapsedMs}ms, Sleeping: {sleepMs}ms"); //performance
                     Thread.Sleep(sleepMs);
@@ -271,38 +271,38 @@ namespace squad_dma
             if (wtsCalls > 0)
                 //Program.Log($"WorldToScreen total time: {totalWtsTime}ms, Calls: {wtsCalls}, Avg: {totalWtsTime / wtsCalls}ms"); //performance
 
-            foreach (var (actor, screenPos, distance) in visibleActors)
-            {
-                if (actor.ActorType == ActorType.Player)
+                foreach (var (actor, screenPos, distance) in visibleActors)
                 {
-                    if (Program.Config.EspBones && actor.BoneScreenPositions != null)
+                    if (actor.ActorType == ActorType.Player)
                     {
-                        DrawBoneLines(actor.BoneScreenPositions);
-                        RawRectangleF boxRect = GetBoxFromBones(actor.BoneScreenPositions);
-                        if (boxRect.Left != 0 || boxRect.Top != 0 || boxRect.Right != 0 || boxRect.Bottom != 0)
+                        if (Program.Config.EspBones && actor.BoneScreenPositions != null)
                         {
-                            if (Program.Config.EspShowBox)
-                                renderTarget.DrawRectangle(boxRect, boneBrush);
+                            DrawBoneLines(actor.BoneScreenPositions);
+                            RawRectangleF boxRect = GetBoxFromBones(actor.BoneScreenPositions);
+                            if (boxRect.Left != 0 || boxRect.Top != 0 || boxRect.Right != 0 || boxRect.Bottom != 0)
+                            {
+                                if (Program.Config.EspShowBox)
+                                    renderTarget.DrawRectangle(boxRect, boneBrush);
 
-                            string nameText = GetNameText(actor);
-                            RawRectangleF nameRect = new RawRectangleF(boxRect.Left, boxRect.Top - 20f, boxRect.Left + 200f, boxRect.Top);
-                            brush.Color = playerColor;
-                            renderTarget.DrawText(nameText, textFormat, nameRect, brush);
+                                string nameText = GetNameText(actor);
+                                RawRectangleF nameRect = new RawRectangleF(boxRect.Left, boxRect.Top - 20f, boxRect.Left + 200f, boxRect.Top);
+                                brush.Color = playerColor;
+                                renderTarget.DrawText(nameText, textFormat, nameRect, brush);
 
-                            string distanceText = Program.Config.EspShowDistance ? $"[{(int)distance}m]" : "";
-                            RawRectangleF distanceRect = new RawRectangleF(boxRect.Left, boxRect.Bottom, boxRect.Left + 200f, boxRect.Bottom + 20f);
-                            renderTarget.DrawText(distanceText, textFormat, distanceRect, brush);
+                                string distanceText = Program.Config.EspShowDistance ? $"[{(int)distance}m]" : "";
+                                RawRectangleF distanceRect = new RawRectangleF(boxRect.Left, boxRect.Bottom, boxRect.Left + 200f, boxRect.Bottom + 20f);
+                                renderTarget.DrawText(distanceText, textFormat, distanceRect, brush);
 
-                            if (Program.Config.EspShowHealth && actor.Health >= 0)
-                                DrawHealthBar(boxRect, actor.Health);
+                                if (Program.Config.EspShowHealth && actor.Health >= 0)
+                                    DrawHealthBar(boxRect, actor.Health);
+                            }
                         }
                     }
+                    else if (IsVehicle(actor))
+                    {
+                        DrawVehicleBox(actor, screenPos, distance);
+                    }
                 }
-                else if (IsVehicle(actor))
-                {
-                    DrawVehicleBox(actor, screenPos, distance);
-                }
-            }
             //Program.Log($"DrawEsp time: {espStart.ElapsedMilliseconds}ms, Actors processed: {visibleActors.Count}"); //performance
         }
 

@@ -177,8 +177,8 @@ namespace squad_dma
         #region Private Methods
         private void InitializeManagers()
         {
-            _debugVehicles = new DebugVehicles(_playerController, _inGame, _actors);
-            _debugTeam = new DebugTeam(_inGame, _localUPlayer, _actors?.Actors);
+            //_debugVehicles = new DebugVehicles(_playerController, _inGame, _actors);
+            //_debugTeam = new DebugTeam(_inGame, _localUPlayer, _actors?.Actors);
             _localSoldier = new LocalSoldier(_playerController, _inGame, _actors);
         }
 
@@ -429,13 +429,18 @@ namespace squad_dma
             }
         }
 
-        private float GetZoomedFOV(float MagnificationDesired, float DefaultFOV)
+        public float GetZoomedFOV(float magnificationDesired, float defaultFOV)
         {
-            float defaultFOVRad = DefaultFOV * 0.00872664626f; // Degrees to radians (π / 360)
-            float zoomedHalfFOVRad = (float)Math.Atan(Math.Tan(defaultFOVRad) / MagnificationDesired);
-            return 2.0f * zoomedHalfFOVRad * 57.295779513f; // Radians to degrees (180 / π)
-        }
+            const float DegToRad = 0.01745329252f; // π / 180 for degrees to radians
+            const float RadToDeg = 57.295779513f;  // 180 / π for radians to degrees
 
+            float defaultFOVRad = defaultFOV * DegToRad; // Convert full FOV to radians
+            float tanHalfFOV = (float)Math.Tan(defaultFOVRad / 2.0f); // Tangent of half the default FOV
+            float zoomedHalfFOVRad = (float)Math.Atan(tanHalfFOV / magnificationDesired); // Half the zoomed FOV
+            float zoomedFOV = 2.0f * zoomedHalfFOVRad * RadToDeg; // Full FOV in degrees
+
+            return zoomedFOV;
+        }
         private void ResetPlayerStateToDefault()
         {
             _isAimingDownSights = false;
