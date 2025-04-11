@@ -1,13 +1,15 @@
-﻿using Offsets;
-using squad_dma.Source.Squad.Features;
-using System;
+﻿using squad_dma.Source.Squad.Features;
+using squad_dma.Source.Squad.Debug;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Numerics;
+using System.Collections.Generic;
 
 namespace squad_dma
 {
-    public class Game : IDisposable
+    /// <summary>
+    /// Class containing Game instance.
+    /// </summary>
+    public class Game
     {
         #region Fields
         private readonly ulong _squadBase;
@@ -22,35 +24,26 @@ namespace squad_dma
         private string _currentLevel = string.Empty;
         private DateTime _lastTeamCheck = DateTime.MinValue;
         private const int TeamCheckInterval = 1000;
+
         private ulong _currentWeaponPtr;
-
-        private GameTickets _gameTickets;
-        private PlayerStats _gameStats;
-        private DebugVehicles _debugVehicles;
-        private DebugTeam _debugTeam;
-        private LocalSoldier _localSoldier;
-
-        public struct SoldierState
-        {
-            public ulong PawnPtr;
-            public ulong WeaponPtr;
-            public ulong InventoryPtr;
-            public bool IsAimingDownSights;
-            public bool IsFiring;
-            public float CameraFOV;
-            public bool HasPipScope;
-            public float CurrentFOV;
-        }
-
+        private ulong _lastNoRecoilWeaponPtr;
         private bool _isAimingDownSights;
         private bool _hasPipScope;
         private float _currentFOV;
         private int _magnificationIndex;
         private bool _isFiring = false;
+
+        private Source.Squad.Manager _soldierManager;
+
+        private GameTickets _gameTickets;
+        private PlayerStats _gameStats;
+        private DebugVehicles _debugVehicles;
+        private DebugTeam _debugTeam;
+        private DebugSoldier _debugSoldier;
         #endregion
 
         #region Properties
-        public bool InGame => _inGame;
+public bool InGame => _inGame;
         public string MapName => _currentLevel;
         public UActor LocalPlayer => _localUPlayer;
         public ReadOnlyDictionary<ulong, UActor> Actors => _actors?.Actors;
@@ -62,6 +55,7 @@ namespace squad_dma
         public bool HasPipScope => _hasPipScope;
         public float CurrentFOV => _currentFOV;
         public bool IsFiring => _isFiring;
+        public int MagnificationIndex => _magnificationIndex;
         #endregion
 
         #region Constructor
@@ -70,7 +64,188 @@ namespace squad_dma
             _squadBase = squadBase;
             _gameTickets = null;
             _gameStats = null;
+            _lastNoRecoilWeaponPtr = 0;
         }
+        #endregion
+
+        #region Scatter Write Entries for NoRecoil, NoSpread, NoSway
+        private readonly List<IScatterWriteEntry> _noRecoilAnimEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeapRecoilRelLoc, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeapRecoilRelLoc + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeapRecoilRelLoc + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MoveRecoilFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.RecoilCanRelease, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilSigma + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.StandRecoilSigma + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.CrouchRecoilSigma + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneRecoilSigma + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ProneTransitionRecoilSigma + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunch, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunch + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunch + 8, 0f),
+        };
+
+        private readonly List<IScatterWriteEntry> _noRecoilWeaponEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.RecoilCameraOffsetFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.RecoilWeaponRelLocFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.AddMoveRecoil, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MaxMoveRecoilFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandRecoilSigma + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.StandAdsRecoilSigma + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchRecoilSigma + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.CrouchAdsRecoilSigma + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneRecoilSigma + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneAdsRecoilSigma + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilMean, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilMean + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilMean + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilSigma, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilSigma + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ProneTransitionRecoilSigma + 8, 0f),
+        };
+
+        private readonly List<IScatterWriteEntry> _noSpreadAnimEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MoveDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalDeviation + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalDeviation + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FinalDeviation + 12, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.AddMoveDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MoveDeviationFactorRelease, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MaxMoveDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinMoveDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.FullStaminaDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.LowStaminaDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.AddShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.AddShotDeviationFactorAds, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.ShotDeviationFactorRelease, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MaxShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinProneAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinProneDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinCrouchAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinCrouchDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinStandAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinStandDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MinProneTransitionDeviation, 0f),
+        };
+
+        private readonly List<IScatterWriteEntry> _noSpreadWeaponEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MaxShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.AddShotDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.AddShotDeviationFactorAds, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.ShotDeviationFactorRelease, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.LowStaminaDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.FullStaminaDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MoveDeviationFactorRelease, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.AddMoveDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MaxMoveDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinMoveDeviationFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinProneAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinProneDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinCrouchAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinCrouchDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinStandAdsDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinStandDeviation, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MinProneTransitionDeviation, 0f),
+        };
+
+        private readonly List<IScatterWriteEntry> _noSwayAnimEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.MoveSwayFactorMultiplier, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SuppressSwayFactorMultiplier, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunchSwayCombinedRotator, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunchSwayCombinedRotator + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.WeaponPunchSwayCombinedRotator + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.UnclampedTotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.TotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.Sway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.Sway + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayData + Offsets.FSQSwayData.Sway + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.TotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.Sway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.Sway + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQAnimInstanceSoldier1P.SwayAlignmentData + Offsets.FSQSwayData.Sway + 8, 0f),
+        };
+
+        private readonly List<IScatterWriteEntry> _noSwayWeaponEntries = new List<IScatterWriteEntry>
+        {
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.AddMoveSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.MaxMoveSwayFactor, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.TotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.Sway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.Sway + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayData + Offsets.FSQSwayData.Sway + 8, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.UnclampedTotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.TotalSway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.Sway, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.Sway + 4, 0f),
+            new ScatterWriteDataEntry<float>(0 + Offsets.USQWeaponStaticInfo.SwayAlignmentData + Offsets.FSQSwayData.Sway + 8, 0f),
+        };
         #endregion
 
         #region Public Methods
@@ -78,21 +253,19 @@ namespace squad_dma
         public void LogVehicles(bool force = false) => _debugVehicles?.LogVehicles(force);
         public void VehicleTeam() => _debugVehicles?.VehicleTeam();
         public void LogTeamInfo() => _debugTeam?.LogTeamInfo();
-        public void SetSuppression(bool enable) => _localSoldier?.SetSuppression(enable);
-        public void SetInteractionDistances(bool enable) => _localSoldier?.SetInteractionDistances(enable);
-        public void SetShootingInMainBase(bool enable) => _localSoldier?.SetShootingInMainBase(enable);
-        public void SetSpeedHack(bool enable) => _localSoldier?.SetSpeedHack(enable);
-        public void SetAirStuck(bool enable) => _localSoldier?.SetAirStuck(enable);
-        public void SetHideActor(bool enable) => _localSoldier?.SetHideActor(enable);
-        public void DisableCollision(bool disable) => _localSoldier?.DisableCollision(disable);
-        public void SetQuickZoom(bool enable) => _localSoldier?.SetQuickZoom(enable);
-        public void SetRapidFire(bool enable) => _localSoldier?.SetRapidFire(enable);
-        public void SetInfiniteAmmo(bool enable) => _localSoldier?.SetInfiniteAmmo(enable);
-        public void SetQuickSwap(bool enable) => _localSoldier?.SetQuickSwap(enable);
-        public void SetNoRecoil(bool enable) => _localSoldier?.SetNoRecoil(enable);
-        public void SetNoSway(bool enable) => _localSoldier?.SetNoSway(enable);
-        public void SetNoCameraShake(bool enable) => _localSoldier?.SetNoCameraShake(enable);
-        public void ReadCurrentWeapons(bool includeOtherPlayers = false) => _localSoldier?.ReadCurrentWeapons(includeOtherPlayers);
+        public void SetSuppression(bool enable) => _soldierManager?.SetSuppression(enable);
+        public void SetInteractionDistances(bool enable) => _soldierManager?.SetInteractionDistances(enable);
+        public void SetShootingInMainBase(bool enable) => _soldierManager?.SetShootingInMainBase(enable);
+        public void SetSpeedHack(bool enable) => _soldierManager?.SetSpeedHack(enable);
+        public void SetAirStuck(bool enable) => _soldierManager?.SetAirStuck(enable);
+        public void SetHideActor(bool enable) => _soldierManager?.SetHideActor(enable);
+        public void DisableCollision(bool disable) => _soldierManager?.DisableCollision(disable);
+        public void SetQuickZoom(bool enable) => _soldierManager?.SetQuickZoom(enable);
+        public void SetRapidFire(bool enable) => _soldierManager?.SetRapidFire(enable);
+        public void SetInfiniteAmmo(bool enable) => _soldierManager?.SetInfiniteAmmo(enable);
+        public void SetQuickSwap(bool enable) => _soldierManager?.SetQuickSwap(enable);
+        public void ReadCurrentWeapons(bool includeOtherPlayers = false) => _debugSoldier?.ReadCurrentWeapons(includeOtherPlayers);
+        public void LogCurrentValues() => _debugSoldier?.LogCurrentValues();
 
         public void WaitForGame()
         {
@@ -141,23 +314,24 @@ namespace squad_dma
                 {
                     throw new GameEnded("Game has ended!");
                 }
-                UpdateLocalPlayerInfo(); // Updates team/squad and camera cache
-                try
-                {
-                    SoldierState state = ProcessSoldierInfo();
-                    _localSoldier?.UpdateSoldierState(state);
-                }
-                catch
-                { }
-                  
+
+                UpdateLocalPlayerInfo();
                 this._actors.UpdateList();
                 this._actors.UpdateAllPlayers();
 
-                // Example: Log team info every 10 seconds
-                if (DateTime.Now.Second % 10 == 0)
+                if (Program.Config.NoRecoil)
                 {
-                    // Uncomment if needed: LogTeamInfo();
+                    ApplyNoRecoilNoSpread();
                 }
+                if (Program.Config.NoSway)
+                {
+                    ApplyNoSway();
+                }
+                if (Program.Config.NoCameraShake)
+                {
+                    ApplyNoCameraShake();
+                }
+                
             }
             catch (DMAShutdown)
             {
@@ -177,9 +351,10 @@ namespace squad_dma
         #region Private Methods
         private void InitializeManagers()
         {
-            //_debugVehicles = new DebugVehicles(_playerController, _inGame, _actors);
-            //_debugTeam = new DebugTeam(_inGame, _localUPlayer, _actors?.Actors);
-            _localSoldier = new LocalSoldier(_playerController, _inGame, _actors);
+            _soldierManager = new Source.Squad.Manager(_playerController, _inGame, _actors);
+            _debugVehicles = new DebugVehicles(_playerController, _inGame, _actors);
+            _debugTeam = new DebugTeam(_inGame, _localUPlayer, _actors?.Actors);
+            _debugSoldier = new DebugSoldier(_playerController, _inGame);
         }
 
         private bool TryExecute(Action action)
@@ -202,8 +377,6 @@ namespace squad_dma
         {
             Program.Log("Game has ended!");
             this._inGame = false;
-            _localSoldier?.Dispose();
-            _localSoldier = null;
             Memory.GameStatus = GameStatus.Menu;
             Memory.Restart();
         }
@@ -214,35 +387,41 @@ namespace squad_dma
             this._inGame = false;
         }
 
-        private bool GetGameWorld() => TryExecute(() => _gameWorld = Memory.ReadPtr(_squadBase + Offsets.GameObjects.GWorld));
+        private bool GetGameWorld() =>
+            TryExecute(() => _gameWorld = Memory.ReadPtr(_squadBase + Offsets.GameObjects.GWorld));
 
-        private bool GetGameInstance() => TryExecute(() => _gameInstance = Memory.ReadPtr(_gameWorld + Offsets.World.OwningGameInstance));
+        private bool GetGameInstance() =>
+            TryExecute(() => _gameInstance = Memory.ReadPtr(_gameWorld + Offsets.World.OwningGameInstance));
 
-        private bool GetCurrentLevel() => TryExecute(() =>
-        {
-            var currentLayer = Memory.ReadPtr(_gameInstance + Offsets.GameInstance.CurrentLayer);
-            var currentLevelIdPtr = currentLayer + Offsets.SQLayer.LevelID;
-            var currentLevelId = Memory.ReadValue<uint>(currentLevelIdPtr);
-            _currentLevel = Memory.GetNamesById([currentLevelId])[currentLevelId];
-            Program.Log("Current level is " + _currentLevel);
-        });
+        private bool GetCurrentLevel() =>
+            TryExecute(() =>
+            {
+                var currentLayer = Memory.ReadPtr(_gameInstance + Offsets.GameInstance.CurrentLayer);
+                var currentLevelIdPtr = currentLayer + Offsets.SQLayer.LevelID;
+                var currentLevelId = Memory.ReadValue<uint>(currentLevelIdPtr);
+                _currentLevel = Memory.GetNamesById([currentLevelId])[currentLevelId];
+                Program.Log($"Current level is {_currentLevel}");
+            });
 
-        private bool InitActors() => TryExecute(() =>
-        {
-            var persistentLevel = Memory.ReadPtr(_gameWorld + Offsets.World.PersistentLevel);
-            _actors = new RegistredActors(persistentLevel);
-        });
+        private bool InitActors() =>
+            TryExecute(() =>
+            {
+                var persistentLevel = Memory.ReadPtr(_gameWorld + Offsets.World.PersistentLevel);
+                _actors = new RegistredActors(persistentLevel);
+            });
 
-        private bool GetLocalPlayer() => TryExecute(() =>
-        {
-            var localPlayers = Memory.ReadPtr(_gameInstance + Offsets.GameInstance.LocalPlayers);
-            _localPlayer = Memory.ReadPtr(localPlayers);
-            _localUPlayer = new UActor(_localPlayer);
-            _localUPlayer.Team = Team.Unknown;
-            GetPlayerController();
-        });
+        private bool GetLocalPlayer() =>
+            TryExecute(() =>
+            {
+                var localPlayers = Memory.ReadPtr(_gameInstance + Offsets.GameInstance.LocalPlayers);
+                _localPlayer = Memory.ReadPtr(localPlayers);
+                _localUPlayer = new UActor(_localPlayer);
+                _localUPlayer.Team = Team.Unknown;
+                GetPlayerController();
+            });
 
-        private bool GetPlayerController() => TryExecute(() => _playerController = Memory.ReadPtr(_localPlayer + Offsets.UPlayer.PlayerController));
+        private bool GetPlayerController() =>
+            TryExecute(() => _playerController = Memory.ReadPtr(_localPlayer + Offsets.UPlayer.PlayerController));
 
         private bool UpdateLocalPlayerInfo()
         {
@@ -272,6 +451,7 @@ namespace squad_dma
                     catch { return false; }
                 }
                 GetCameraCache();
+                ProcessPlayerInfo();
                 return true;
             }
             catch
@@ -319,89 +499,29 @@ namespace squad_dma
             catch { return false; }
         }
 
-        private SoldierState ProcessSoldierInfo()
+        private bool ProcessPlayerInfo()
         {
-            SoldierState state = new SoldierState();
-            state.PawnPtr = ReadPawnPointer();
-            if (state.PawnPtr == 0)
+            var scatterMap = new ScatterReadMap(1);
+            ulong pawnPtr = ReadPawnPointer();
+            if (pawnPtr == 0)
             {
                 ResetPlayerStateToDefault();
-                return state;
+                return true;
             }
 
-            string pawnClassName = Memory.GetActorClassName(state.PawnPtr);
+            string pawnClassName = Memory.GetActorClassName(pawnPtr);
             bool isInVehicle = !pawnClassName.Contains("BP_Soldier");
-            state.CameraFOV = ReadCameraFOV();
+            float cameraFOV = ReadCameraFOV();
 
             if (isInVehicle)
             {
-                _currentFOV = state.CameraFOV;
-                state.CurrentFOV = state.CameraFOV;
-                return state;
+                _currentFOV = cameraFOV;
+                _isAimingDownSights = false;
+                _hasPipScope = false;
+                return true;
             }
 
-            var scatterMap = new ScatterReadMap(1);
-            state.InventoryPtr = Memory.ReadPtr(state.PawnPtr + Offsets.ASQSoldier.InventoryComponent);
-            if (state.InventoryPtr == 0)
-            {
-                state.CurrentFOV = state.CameraFOV;
-                return state;
-            }
-
-            var round1 = scatterMap.AddRound();
-            var weaponPtrEntry = round1.AddEntry<ulong>(0, 0, state.InventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
-            scatterMap.Execute();
-
-            if (!scatterMap.Results[0][0].TryGetResult<ulong>(out state.WeaponPtr) || state.WeaponPtr == 0)
-            {
-                state.CurrentFOV = state.CameraFOV;
-                return state;
-            }
-
-            var round2 = scatterMap.AddRound();
-            round2.AddEntry<byte>(0, 1, state.WeaponPtr + Offsets.ASQWeapon.bAimingDownSights);
-            round2.AddEntry<ulong>(0, 2, state.WeaponPtr + Offsets.ASQWeapon.CachedPipScope);
-            round2.AddEntry<float>(0, 3, state.WeaponPtr + Offsets.ASQWeapon.CurrentFOV);
-            round2.AddEntry<byte>(0, 4, state.WeaponPtr + Offsets.ASQWeapon.CurrentState);
-            scatterMap.Execute();
-
-            state.IsAimingDownSights = scatterMap.Results[0][1].TryGetResult<byte>(out byte ads) && ads == 1;
-            state.HasPipScope = scatterMap.Results[0][2].TryGetResult<ulong>(out ulong pipScopePtr) && pipScopePtr != 0;
-            float weaponFOV = scatterMap.Results[0][3].TryGetResult<float>(out float currFOV) && currFOV > 5f && currFOV < 180f ? currFOV : state.CameraFOV;
-            state.IsFiring = scatterMap.Results[0][4].TryGetResult<byte>(out byte firing) && firing == 1;
-
-            state.CurrentFOV = state.CameraFOV;
-            if (state.IsAimingDownSights && state.HasPipScope && pipScopePtr != 0)
-            {
-                UpdateScopeMagnification(pipScopePtr, weaponFOV, ref state.CurrentFOV);
-            }
-            else if (state.IsAimingDownSights)
-            {
-                state.CurrentFOV = weaponFOV;
-            }
-
-            _isAimingDownSights = state.IsAimingDownSights;
-            _hasPipScope = state.HasPipScope;
-            _currentFOV = state.CurrentFOV;
-            _isFiring = state.IsFiring;
-            _currentWeaponPtr = state.WeaponPtr;
-
-            return state;
-        }
-
-        private ulong ReadPawnPointer()
-        {
-            if (_playerController == 0)
-                return 0;
-
-            try
-            {
-                return Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
-            }
-            catch
-            {
-                return 0;
-            }
+            return UpdateOnFootPlayerInfo(scatterMap, pawnPtr, cameraFOV);
         }
 
         private float ReadCameraFOV()
@@ -410,17 +530,101 @@ namespace squad_dma
             return Memory.ReadValue<float>(cameraManagerPtr + Offsets.Camera.CameraFov);
         }
 
+        /// <summary>
+        /// Updates player info for on-foot scenarios.
+        /// </summary>
+        /// <param name="scatterMap">The scatter read map for batch memory reading</param>
+        /// <param name="pawnPtr">Pointer to the pawn</param>
+        /// <param name="cameraFOV">Base camera FOV</param>
+        /// <returns>True if successful</returns>
+        private bool UpdateOnFootPlayerInfo(ScatterReadMap scatterMap, ulong pawnPtr, float cameraFOV)
+        {
+            ulong inventoryPtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.InventoryComponent);
+            if (inventoryPtr == 0)
+            {
+                _isAimingDownSights = false;
+                _hasPipScope = false;
+                _currentFOV = cameraFOV;
+                return true;
+            }
+
+            var round1 = scatterMap.AddRound();
+            var weaponPtrEntry = round1.AddEntry<ulong>(0, 0, inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
+            scatterMap.Execute();
+
+            if (!scatterMap.Results[0][0].TryGetResult<ulong>(out ulong weaponPtr) || weaponPtr == 0)
+            {
+                _isAimingDownSights = false;
+                _hasPipScope = false;
+                _currentFOV = cameraFOV;
+                return true;
+            }
+
+            return UpdateWeaponInfo(scatterMap, weaponPtr, cameraFOV);
+        }
+
+        /// <summary>
+        /// Updates weapon-specific information including ADS, scope, and FOV.
+        /// </summary>
+        /// <param name="scatterMap">The scatter read map</param>
+        /// <param name="weaponPtr">Pointer to the current weapon</param>
+        /// <param name="cameraFOV">Base camera FOV</param>
+        /// <returns>True if successful</returns>
+        private bool UpdateWeaponInfo(ScatterReadMap scatterMap, ulong weaponPtr, float cameraFOV)
+        {
+            _currentWeaponPtr = weaponPtr; // Update current weapon pointer
+
+            var round2 = scatterMap.AddRound();
+            round2.AddEntry<byte>(0, 1, weaponPtr + Offsets.ASQWeapon.bAimingDownSights);
+            round2.AddEntry<ulong>(0, 2, weaponPtr + Offsets.ASQWeapon.CachedPipScope);
+            round2.AddEntry<float>(0, 3, weaponPtr + Offsets.ASQWeapon.CurrentFOV);
+            round2.AddEntry<byte>(0, 4, weaponPtr + Offsets.ASQWeapon.CurrentState);
+            scatterMap.Execute();
+
+            _isAimingDownSights = scatterMap.Results[0][1].TryGetResult<byte>(out byte ads) && ads == 1;
+            _hasPipScope = scatterMap.Results[0][2].TryGetResult<ulong>(out ulong pipScopePtr) && pipScopePtr != 0;
+            float weaponFOV = scatterMap.Results[0][3].TryGetResult<float>(out float currFOV) && currFOV > 5f && currFOV < 180f ? currFOV : cameraFOV;
+            _isFiring = scatterMap.Results[0][4].TryGetResult<byte>(out byte firing) && firing == 1;
+
+            float finalFOV = cameraFOV; // Default to camera FOV
+            if (_isAimingDownSights)
+            {
+                finalFOV = weaponFOV; // Set to ADS FOV initially
+                if (_hasPipScope && pipScopePtr != 0)
+                {
+                    UpdateScopeMagnification(pipScopePtr, weaponFOV, ref finalFOV); // Adjust for magnification
+                }
+            }
+
+            // Assign the final FOV only once
+            _currentFOV = finalFOV;
+
+            //Program.Log($"ADS: {_isAimingDownSights}, PipScope: {_hasPipScope}, Firing: {_isFiring}, WeaponPtr: 0x{_currentWeaponPtr:X}, FOV: {_currentFOV}, WeaponFOV: {weaponFOV}, CameraFOV: {cameraFOV}");
+
+            return true;
+        }
+
+        /// <summary>
+        /// Updates scope magnification and adjusts FOV accordingly.
+        /// </summary>
+        /// <param name="pipScopePtr">The pipScopePtr adress</param>
+        /// <param name="pipScopePtr">Pointer to the pip scope</param>
+        /// <param name="weaponFOV">Base weapon FOV</param>
         private void UpdateScopeMagnification(ulong pipScopePtr, float weaponFOV, ref float fov)
         {
+            // Directly read the CurrentMagnificationLevel using ReadValue
             int magnificationIdx = Memory.ReadValue<int>(pipScopePtr + Offsets.USQPipScopeCaptureComponent.CurrentMagnificationLevel);
-            _magnificationIndex = (magnificationIdx >= 0 && magnificationIdx < 3) ? magnificationIdx : 0;
 
+            // Validate and assign the magnification index
+            _magnificationIndex = (magnificationIdx >= 0 && magnificationIdx < 3) ? magnificationIdx : 0;
+            //Program.Log($"ADS: {_isAimingDownSights}, PipScope: {_hasPipScope}, FOV: {_currentFOV}, WeaponFOV: {weaponFOV}, CameraFOV: {cameraFOV}");
+            // Determine magnification factor based on index
             float magnification = _magnificationIndex switch
             {
-                0 => Program.Config.FirstScopeMagnification,
-                1 => Program.Config.SecondScopeMagnification,
-                2 => Program.Config.ThirdScopeMagnification,
-                _ => 1f
+                0 => Program.Config.FirstScopeMagnification,  // 1st scope Magnification
+                1 => Program.Config.SecondScopeMagnification, // 2nd scope Magnification
+                2 => Program.Config.ThirdScopeMagnification,  // 3rd scope Magnification
+                _ => 1f                               // Default (no magnification)
             };
 
             if (magnification > 1f)
@@ -429,18 +633,17 @@ namespace squad_dma
             }
         }
 
-        public float GetZoomedFOV(float magnificationDesired, float defaultFOV)
+        //Zoomed FOV Calculation :
+
+        float GetZoomedFOV(float MagnificationDesired, float DefaultFOV)
         {
-            const float DegToRad = 0.01745329252f; // π / 180 for degrees to radians
-            const float RadToDeg = 57.295779513f;  // 180 / π for radians to degrees
-
-            float defaultFOVRad = defaultFOV * DegToRad; // Convert full FOV to radians
-            float tanHalfFOV = (float)Math.Tan(defaultFOVRad / 2.0f); // Tangent of half the default FOV
-            float zoomedHalfFOVRad = (float)Math.Atan(tanHalfFOV / magnificationDesired); // Half the zoomed FOV
-            float zoomedFOV = 2.0f * zoomedHalfFOVRad * RadToDeg; // Full FOV in degrees
-
-            return zoomedFOV;
+            float defaultFOVRad = DefaultFOV * 0.00872664626f; // Conversion degrés -> radians (π / 360)
+            float zoomedHalfFOVRad = (float)Math.Atan(Math.Tan(defaultFOVRad) / MagnificationDesired);
+            return 2.0f * zoomedHalfFOVRad * 57.295779513f; // Conversion radians -> degrés (180 / π)
         }
+        /// <summary>
+        /// Resets player state variables to their default values.
+        /// </summary>
         private void ResetPlayerStateToDefault()
         {
             _isAimingDownSights = false;
@@ -448,14 +651,175 @@ namespace squad_dma
             _isFiring = false;
             _currentFOV = 90f;
             _currentWeaponPtr = 0;
+            _lastNoRecoilWeaponPtr = 0;
+        }
+
+        private ulong ReadPawnPointer()
+        {
+            return Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
+        }
+
+        #region NoRecoil, NoSpread, NoSway Methods
+        private bool CanApplyPlayerEffects(ulong pawnPtr)
+        {
+            if (pawnPtr == 0) return false;
+            string pawnClassName = Memory.GetActorClassName(pawnPtr);
+            return pawnClassName.Contains("BP_Soldier");
+        }
+
+        // Helper method to get common base pointers
+        private bool GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)
+        {
+            animInstancePtr = 0;
+            weaponStaticInfoPtr = 0;
+
+            ulong pawnPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
+            if (pawnPtr == 0) return false;
+
+            ulong inventoryPtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.InventoryComponent);
+            if (inventoryPtr == 0) return false;
+
+            ulong weaponPtr = Memory.ReadPtr(inventoryPtr + Offsets.USQPawnInventoryComponent.CurrentWeapon);
+            if (weaponPtr == 0) return false;
+
+            animInstancePtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.CachedAnimInstance1p);
+            weaponStaticInfoPtr = Memory.ReadPtr(weaponPtr + Offsets.ASQWeapon.WeaponStaticInfo);
+
+            return animInstancePtr != 0 && weaponStaticInfoPtr != 0;
+        }
+
+        private IScatterWriteEntry UpdateEntryAddress(IScatterWriteEntry entry, ulong baseAddress)
+        {
+            if (entry is ScatterWriteDataEntry<float> floatEntry)
+            {
+                return new ScatterWriteDataEntry<float>(baseAddress + (ulong)floatEntry.Address, floatEntry.Data);
+            }
+            return entry;
+        }
+
+        public void ApplyNoRecoilNoSpread()
+        {
+            try
+            {
+                ulong pawnPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.AcknowledgedPawn);
+                if (pawnPtr == 0)
+                {
+                    _lastNoRecoilWeaponPtr = 0;
+                    Program.Log("No-recoil/no-spread skipped: No acknowledged pawn.");
+                    return;
+                }
+
+                // Check if the player is in a vehicle
+                string pawnClassName = Memory.GetActorClassName(pawnPtr);
+                bool isInVehicle = !pawnClassName.Contains("BP_Soldier");
+                if (isInVehicle)
+                {
+                    _lastNoRecoilWeaponPtr = 0;
+                    // Program.Log("No-recoil/no-spread skipped: Player is in a vehicle.");
+                    return;
+                }
+
+                if (_currentWeaponPtr == 0)
+                {
+                    _lastNoRecoilWeaponPtr = 0;
+                    // Program.Log("No-recoil/no-spread skipped: No current weapon detected.");
+                    return;
+                }
+
+                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr))
+                {
+                    Program.Log("No-recoil/no-spread skipped: Failed to get base pointers.");
+                    return;
+                }
+
+                var scatterEntries = new List<IScatterWriteEntry>();
+
+                if (_currentWeaponPtr != _lastNoRecoilWeaponPtr || _lastNoRecoilWeaponPtr == 0)
+                {
+                    scatterEntries.AddRange(_noRecoilAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+                    scatterEntries.AddRange(_noRecoilWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+                    scatterEntries.AddRange(_noSpreadAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+                    scatterEntries.AddRange(_noSpreadWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+                    _lastNoRecoilWeaponPtr = _currentWeaponPtr;
+                    Program.Log($"No-recoil & no-spread applied for weapon 0x{_currentWeaponPtr:X}");
+                }
+
+                if (scatterEntries.Count > 0)
+                {
+                    Memory.WriteScatter(scatterEntries);
+                }
+            }
+            catch { /* Silently fail */ }
+        }
+
+        public void ApplyNoSway()
+        {
+            if (!_isAimingDownSights) return; // Only apply when ADS
+
+            try
+            {
+                if (!GetBasePointers(out ulong animInstancePtr, out ulong weaponStaticInfoPtr)) return;
+
+                var scatterEntries = new List<IScatterWriteEntry>();
+                scatterEntries.AddRange(_noSwayAnimEntries.Select(e => UpdateEntryAddress(e, animInstancePtr)));
+                scatterEntries.AddRange(_noSwayWeaponEntries.Select(e => UpdateEntryAddress(e, weaponStaticInfoPtr)));
+
+                if (scatterEntries.Count > 0)
+                {
+                    Memory.WriteScatter(scatterEntries);
+                    //Program.Log("No-sway applied successfully.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Failed to apply no-sway: {ex.Message}");
+            }
+        }
+        public void ApplyNoCameraShake()
+        {
+            if (!_isFiring) return; // Only apply when firing
+
+            try
+            {
+                var scatterEntries = new List<IScatterWriteEntry>();
+
+                // Handle camera shake suppression
+                ulong cameraManagerPtr = Memory.ReadPtr(_playerController + Offsets.PlayerController.PlayerCameraManager);
+                if (cameraManagerPtr == 0) return;
+                ulong cameraShakeModPtr = Memory.ReadPtr(cameraManagerPtr + Offsets.Camera.CachedCameraShakeMod);
+                if (cameraShakeModPtr != 0)
+                {
+                    ulong activeShakesDataPtr = Memory.ReadPtr(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes);
+                    if (activeShakesDataPtr != 0)
+                    {
+                        int activeShakesCount = Memory.ReadValue<int>(cameraShakeModPtr + Offsets.UCameraModifier_CameraShake.ActiveShakes + 0x8);
+                        if (activeShakesCount > 0)
+                        {
+                            const int shakeInfoSize = 0x18;
+                            for (int i = 0; i < activeShakesCount; i++)
+                            {
+                                ulong shakeBasePtr = Memory.ReadPtr(activeShakesDataPtr + (uint)(i * shakeInfoSize));
+                                if (shakeBasePtr != 0)
+                                {
+                                    scatterEntries.Add(new ScatterWriteDataEntry<float>(shakeBasePtr + Offsets.UCameraShakeBase.ShakeScale, 0f));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (scatterEntries.Count > 0)
+                {
+                    Memory.WriteScatter(scatterEntries);
+                    //Program.Log("No-shake applied successfully.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Failed to apply no-shake: {ex.Message}");
+            }
         }
         #endregion
-
-        #region IDisposable
-        public void Dispose()
-        {
-            _localSoldier?.Dispose();
-        }
         #endregion
     }
 

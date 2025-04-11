@@ -53,6 +53,16 @@
         public const uint RelativeLocationComp2World = 0x1D0;
     }
 
+    public struct UPrimitiveComponent
+    {
+        public const uint BodyInstance = 0x2C8; // FBodyInstance
+    }
+
+    public struct FBodyInstance
+    {
+        public const uint CollisionEnabled = 0x20; // uint8
+    }
+
     public struct UPlayer
     {
         public const uint PlayerController = 0x30;

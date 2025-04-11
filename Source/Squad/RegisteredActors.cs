@@ -1,21 +1,23 @@
 ﻿using Offsets;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Numerics;
+using System.Linq;
 
 namespace squad_dma
 {
     public class RegistredActors
     {
-        private readonly object _updateLock = new();
         private readonly ulong _persistentLevel;
         private ulong _actorsArray;
         private readonly Stopwatch _regSw = new();
         private readonly ConcurrentDictionary<ulong, UActor> _actors = new();
         private Dictionary<ulong, int> _squadCache = new();
         private DateTime _lastSquadUpdate = DateTime.MinValue;
-        private const int SquadUpdateInterval = 1000; // Update every 1 second
+        private const int SquadUpdateInterval = 1000;
+
         public IEnumerable<uint> GetActorNameIds()
         {
             return _actors.Values.Select(actor => actor.NameId).Where(id => id != 0);
@@ -33,89 +35,46 @@ namespace squad_dma
                 {
                     try
                     {
-                        if (_persistentLevel == 0)
-                        {
-                            Program.Log("ERROR: _persistentLevel is invalid (0).");
-                            return -1;
-                        }
-
-                        var targetAddr = _persistentLevel + Offsets.Level.MaxPacket;
-                        //Program.Log($"Reading ActorCount from {targetAddr:X}");
-
-                        var scatterMap = new ScatterReadMap(1);
-                        var round = scatterMap.AddRound();
-                        var countEntry = round.AddEntry<int>(0, 0, targetAddr);
-                        scatterMap.Execute();
-
-                        if (!scatterMap.Results[0][0].TryGetResult<int>(out var count))
-                        {
-                            Program.Log($"ERROR: Failed to read actor count at {targetAddr:X}");
-                            throw new Exception("Failed to read actor count");
-                        }
-
+                        var count = Memory.ReadValue<int>(_persistentLevel + Offsets.Level.MaxPacket);
                         if (count < 1)
                         {
-                            _actors.Clear();
-                            Program.Log("Actor count < 1, clearing actors.");
+                            this._actors.Clear();
                             return -1;
                         }
-
                         return count;
                     }
                     catch (DMAShutdown)
                     {
                         throw;
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (attempt < maxAttempts - 1)
                     {
-                        Program.Log($"ERROR - PlayerCount attempt {attempt + 1} failed at {_persistentLevel + Offsets.Level.MaxPacket:X}: {ex}");
-                        if (attempt < maxAttempts - 1) Thread.Sleep(1000);
+                        Program.Log($"ERROR - PlayerCount attempt {attempt + 1} failed: {ex}");
+                        Thread.Sleep(1000);
                     }
                 }
-                Program.Log("ERROR: All attempts to read ActorCount failed.");
                 return -1;
             }
         }
         #endregion
 
-        /// <summary>
-        /// RegisteredPlayers List Constructor.
-        /// </summary>
         public RegistredActors(ulong persistentLevelAddr)
         {
-            _persistentLevel = persistentLevelAddr;
-            Actors = new ReadOnlyDictionary<ulong, UActor>(_actors);
-
-            if (_persistentLevel == 0)
-            {
-                Program.Log("ERROR: Invalid persistentLevelAddr (0) during initialization.");
-                throw new Exception("Invalid persistent level");
-            }
-
-            var scatterMap = new ScatterReadMap(1);
-            var round = scatterMap.AddRound();
-            var actorsArrayEntry = round.AddEntry<ulong>(0, 0, _persistentLevel + Offsets.Level.Actors);
-            scatterMap.Execute();
-
-            if (!scatterMap.Results[0][0].TryGetResult<ulong>(out _actorsArray) || _actorsArray == 0)
-            {
-                Program.Log($"ERROR: Failed to initialize _actorsArray from {_persistentLevel + Offsets.Level.Actors:X}");
-                throw new Exception("Failed to initialize actors array");
-            }
-
-            Program.Log($"Initialized: _persistentLevel={_persistentLevel:X}, _actorsArray={_actorsArray:X}");
-            _regSw.Start();
+            this._persistentLevel = persistentLevelAddr;
+            this.Actors = new(this._actors);
+            this._actorsArray = Memory.ReadPtr(_persistentLevel + Offsets.Level.Actors);
+            this._regSw.Start();
+            Program.Log($"RegistredActors initialized with persistentLevel: 0x{persistentLevelAddr:X}");
         }
 
         #region Update List/Player Functions
         public Dictionary<ulong, uint> GetActorBaseWithName()
         {
             var count = this.ActorCount;
-            if (count < 10)
+            if (count < 1)
                 return new Dictionary<ulong, uint>();
 
             var initialActorScatterMap = new ScatterReadMap(count);
-
             var actorRound = initialActorScatterMap.AddRound();
             var playerObjectIdRound = initialActorScatterMap.AddRound();
 
@@ -140,22 +99,20 @@ namespace squad_dma
             return actorBaseWithName;
         }
 
-
+        private static Random rng = new Random();
         public void UpdateList()
         {
-            Random rand = new Random();
-            if (this._regSw.ElapsedMilliseconds < (200 + rand.Next(0, 500))) // 1-1.5s
+            float rand = rng.Next(0, 301);
+            if (this._regSw.ElapsedMilliseconds < 300 + rand)
                 return;
 
             try
             {
                 var count = this.ActorCount;
-
-                if (count < 10)// todo
+                if (count < 1)
                     throw new GameEnded();
 
                 var initialActorScatterMap = new ScatterReadMap(count);
-
                 var actorRound = initialActorScatterMap.AddRound();
                 var playerObjectIdRound = initialActorScatterMap.AddRound();
 
@@ -186,17 +143,18 @@ namespace squad_dma
                         actorBaseWithName.Remove(item.Key);
                     }
                 }
+
                 var names = Memory.GetNamesById([.. actorBaseWithName.Values.Distinct()]);
                 foreach (var item in names)
                 {
                     if (item.Value.StartsWith("BP_UAF"))
-                    {
                         names[item.Key] = item.Value.Replace("BP_UAF", "BP_Soldier_UAF");
-                    }
                 }
+
                 var playersNameIDs = names.Where(x => x.Value.StartsWith("BP_Soldier") || Names.TechNames.ContainsKey(x.Value)).ToDictionary();
                 var filteredActors = actorBaseWithName.Where(actor => playersNameIDs.ContainsKey(actor.Value)).Select(actor => actor.Key).ToList();
                 count = filteredActors.Count;
+
                 for (int i = 0; i < count; i++)
                 {
                     var actorAddr = filteredActors[i];
@@ -205,9 +163,8 @@ namespace squad_dma
                     var team = Team.Unknown;
                     var actorType = Names.TechNames.GetValueOrDefault(actorName, ActorType.Player);
                     if (actorType == ActorType.Player)
-                    {
                         team = Names.Teams.GetValueOrDefault(actorName[..14], Team.Unknown);
-                    }
+
                     if (_actors.TryGetValue(actorAddr, out var actor))
                     {
                         if (actor.ErrorCount > 50)
@@ -227,19 +184,11 @@ namespace squad_dma
                     }
                     _actors[actorAddr].Name = actorName;
                     notUpdated.Remove(actorAddr);
-                    _actors[actorAddr].MissingCount = 0; // Reset MissingCount when actor is found
                 }
 
-                foreach (var actorId in notUpdated)
+                foreach (var actorIdToRemove in notUpdated)
                 {
-                    if (_actors.TryGetValue(actorId, out var actor))
-                    {
-                        actor.MissingCount++;
-                        if (actor.MissingCount > 4)
-                        { // Remove after 4 missed cycles
-                            _actors.TryRemove(actorId, out var _);
-                        }
-                    }
+                    _actors.TryRemove(actorIdToRemove, out var _);
                 }
             }
             catch (DMAShutdown)
@@ -278,16 +227,12 @@ namespace squad_dma
             }
         }
 
-        /// <summary>
-        /// Updates all 'Player' values (Position,health,direction,etc.)
-        /// </summary>
         public void UpdateAllPlayers()
         {
             try
             {
                 var count = _actors.Count;
-
-                if (count < 5) //   
+                if (count < 10)
                     throw new GameEnded();
 
                 var actorBases = _actors.Values.Select(actor => actor.Base).Order().ToArray();
@@ -316,9 +261,9 @@ namespace squad_dma
                         teamInfoRound.AddEntry<int>(i, 9, pawnPlayerState, null, Offsets.ASQPlayerState.TeamID);
                         teamInfoRound.AddEntry<int>(i, 10, controllerPlayerState, null, Offsets.ASQPlayerState.TeamID);
 
-                        var meshPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 11, actorAddr + Offsets.ASQSoldier.Mesh);
-                        meshRound.AddEntry<FTransform>(i, 12, meshPtr, null, 0x1C0); // ComponentToWorld
-                        var boneArrayPtr = meshRound.AddEntry<ulong>(i, 13, meshPtr, null, 0x4B0); // hardcodded offsets didn't find in dumpspace
+                        var meshPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 11, actorAddr + 0x288);
+                        meshRound.AddEntry<FTransform>(i, 12, meshPtr, null, 0x1C0);
+                        var boneArrayPtr = meshRound.AddEntry<ulong>(i, 13, meshPtr, null, 0x4B0);
 
                         for (int j = 0; j < boneIds.Length; j++)
                         {
@@ -334,9 +279,8 @@ namespace squad_dma
                     {
                         playerInstanceInfoRound.AddEntry<float>(i, 2, actorAddr + Offsets.SQVehicle.Health);
                         playerInstanceInfoRound.AddEntry<float>(i, 3, actorAddr + Offsets.SQVehicle.MaxHealth);
-                        // Vehicle TeamID retrieval
-                        var claimedBySquadPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 14, actorAddr + 0x530); // hardcodded VehicleClaimedBySquadOffset
-                        teamInfoRound.AddEntry<int>(i, 15, claimedBySquadPtr, null, 0x2AC); // hardcodded SquadStateTeamIdOffset
+                        var claimedBySquadPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 14, actorAddr + 0x530);
+                        teamInfoRound.AddEntry<int>(i, 15, claimedBySquadPtr, null, 0x2AC);
                     }
 
                     instigatorAndRootRound.AddEntry<Vector3>(i, 4, rootComponent, null, Offsets.USceneComponent.RelativeLocation);
@@ -373,6 +317,7 @@ namespace squad_dma
                     if (actor.ActorType == ActorType.Player)
                     {
                         bool teamIdFound = false;
+
                         if (results.TryGetValue(9, out var pawnTeamResult) &&
                             pawnTeamResult.TryGetResult<int>(out var pawnTeamId))
                         {
@@ -440,18 +385,36 @@ namespace squad_dma
                             }
                         }
 
-                        // Bone ESP updates
                         if (results.TryGetValue(11, out var meshResult) && meshResult.TryGetResult<ulong>(out var meshAddr))
                         {
                             actor.Mesh = meshAddr;
+                            if (meshAddr == 0)
+                            {
+                                actor.BoneScreenPositions = new Vector2[boneIds.Length];
+                                Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
+                                continue;
+                            }
 
                             if (results.TryGetValue(12, out var ctwResult) && ctwResult.TryGetResult<FTransform>(out var ctw))
                             {
                                 actor.ComponentToWorld = ctw;
                             }
+                            else
+                            {
+                                actor.BoneScreenPositions = new Vector2[boneIds.Length];
+                                Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
+                                continue;
+                            }
 
                             if (results.TryGetValue(13, out var boneArrayResult) && boneArrayResult.TryGetResult<ulong>(out var boneArrayPtr))
                             {
+                                if (boneArrayPtr == 0)
+                                {
+                                    actor.BoneScreenPositions = new Vector2[boneIds.Length];
+                                    Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
+                                    continue;
+                                }
+
                                 actor.BoneTransforms.Clear();
                                 var viewInfo = new MinimalViewInfo
                                 {
@@ -461,6 +424,7 @@ namespace squad_dma
                                 };
                                 actor.BoneScreenPositions = new Vector2[boneIds.Length];
 
+                                bool anyBoneSuccess = false;
                                 for (int j = 0; j < boneIds.Length; j++)
                                 {
                                     if (results.TryGetValue(14 + j, out var boneResult) &&
@@ -469,11 +433,20 @@ namespace squad_dma
                                         actor.BoneTransforms[boneIds[j]] = boneTransform;
                                         Vector3 boneWorldPos = TransformToWorld(boneTransform, actor.ComponentToWorld);
                                         actor.BoneScreenPositions[j] = Camera.WorldToScreen(viewInfo, boneWorldPos);
+                                        if (actor.BoneScreenPositions[j] != Vector2.Zero)
+                                        {
+                                            anyBoneSuccess = true;
+                                        }
                                     }
                                     else
                                     {
                                         actor.BoneScreenPositions[j] = Vector2.Zero;
                                     }
+                                }
+
+                                if (!anyBoneSuccess)
+                                {
+                                    Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
                                 }
                             }
                             else
@@ -487,28 +460,6 @@ namespace squad_dma
                             actor.Mesh = 0;
                             actor.BoneScreenPositions = new Vector2[boneIds.Length];
                             Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
-                        }
-                    }
-                    else if (!Names.Deployables.Contains(actor.ActorType)) // Vehicle
-                    {
-                        // Retrieve Vehicle TeamID
-                        if (results.TryGetValue(14, out var claimedBySquadResult) &&
-                            claimedBySquadResult.TryGetResult<ulong>(out var claimedBySquad) &&
-                            claimedBySquad != 0)
-                        {
-                            if (results.TryGetValue(15, out var vehicleTeamResult) &&
-                                vehicleTeamResult.TryGetResult<int>(out var vehicleTeamId))
-                            {
-                                actor.TeamID = vehicleTeamId;
-                            }
-                            else
-                            {
-                                actor.TeamID = -1; // Fallback if TeamID read fails
-                            }
-                        }
-                        else
-                        {
-                            actor.TeamID = -1; // Unclaimed vehicle
                         }
                     }
 
@@ -530,7 +481,7 @@ namespace squad_dma
                 {
                     _lastSquadUpdate = DateTime.Now;
                     _squadCache = _squadCache.Where(kv => _actors.ContainsKey(kv.Key))
-                                           .ToDictionary(kv => kv.Key, kv => kv.Value);
+                                             .ToDictionary(kv => kv.Key, kv => kv.Value);
                 }
             }
             catch (GameEnded)
@@ -552,6 +503,6 @@ namespace squad_dma
             Matrix4x4 finalMatrix = boneMatrix * worldMatrix;
             return new Vector3(finalMatrix.M41, finalMatrix.M42, finalMatrix.M43);
         }
-        #endregion
     }
+    #endregion
 }

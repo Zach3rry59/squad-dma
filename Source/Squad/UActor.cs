@@ -1,5 +1,4 @@
-﻿using Offsets;
-using SkiaSharp;
+﻿using SkiaSharp;
 using System.Diagnostics;
 using System.Numerics;
 
@@ -10,18 +9,17 @@ namespace squad_dma
     /// </summary>
     public class UActor
     {
-        private readonly object _posLock = new();
+        private readonly object _posLock = new(); // sync access to this.Position (non-atomic)
+        private Vector3 _previousPosition = Vector3.Zero; // Track previous position for movement
 
         #region PlayerProperties
         public uint NameId { get; set; }
-        public string Name { get; set; } // Class name ("BP_Soldier_UAF")
-        public string Nickname { get; set; } // In-game player name ("Player123")
+        public string Name { get; set; }
         public float Health { get; set; } = -1;
         public int TeamID { get; set; } = -1;
         public int SquadID { get; set; } = -1;
         public List<UActor> MySquadMembers { get; } = new List<UActor>();
         public Team Team { get; set; } = Team.Unknown;
-        public int MissingCount { get; set; } = 0;
         public ulong Mesh { get; set; }
         public FTransform ComponentToWorld { get; set; }
         public Dictionary<int, FTransform> BoneTransforms { get; set; } = new Dictionary<int, FTransform>();
@@ -30,7 +28,7 @@ namespace squad_dma
 
         public bool IsFriendly()
         {
-            if (TeamID == -1) return false; 
+            if (TeamID == -1) return false;
 
             var localPlayer = Memory.LocalPlayer;
             if (localPlayer == null) return false;
@@ -74,7 +72,7 @@ namespace squad_dma
 
         public ActorType ActorType { get; set; } = ActorType.Player;
         private Vector3 _pos = new Vector3(0, 0, 0);
-        public Vector3 Position
+        public Vector3 Position // 96 bits, cannot set atomically
         {
             get
             {
@@ -87,16 +85,17 @@ namespace squad_dma
             {
                 lock (_posLock)
                 {
+                    _previousPosition = _pos; // Store the previous position before updating
                     _pos = value;
                 }
             }
         }
         public Vector2 ZoomedPosition { get; set; } = new();
-        public Vector2 Rotation { get; set; } = new Vector2(0, 0);
+        public Vector2 Rotation { get; set; } = new Vector2(0, 0); // 64 bits will be atomic
         public Vector3 Rotation3D { get; set; } = new Vector3(0, 0, 0);
         public int ErrorCount { get; set; } = 0;
 
-        public Vector3 DeathPosition { get; set; } = Vector3.Zero; 
+        public Vector3 DeathPosition { get; set; } = Vector3.Zero;
         public DateTime TimeOfDeath { get; set; } = DateTime.MinValue;
 
         #endregion
@@ -111,9 +110,6 @@ namespace squad_dma
         {
             Debug.WriteLine("Actor Constructor: Initialization started.");
             this.Base = actorBase;
-            this.BoneScreenPositions = new Vector2[19];
-            this.Mesh = Memory.ReadValue<ulong>(actorBase + ASQSoldier.Mesh); // Offset Mesh
-            //Program.Log($"Actor Mesh initialized: {this.Mesh:X}");
         }
         #endregion
     }

@@ -52,6 +52,37 @@ namespace squad_dma
             chkEnableNoRecoil = new CheckBox();
             chkEnableNoSway = new CheckBox();
             chkEnableNoCameraShake = new CheckBox();
+            grpUserInterface = new GroupBox();
+            lblUIScale = new Label();
+            lblAimline = new Label();
+            lblTechMarkerScale = new Label();
+            grpRadar = new GroupBox();
+            grpEsp = new GroupBox();
+            chkEnableEsp = new CheckBox();
+            chkEnableBones = new CheckBox();
+            trkEspMaxDistance = new TrackBar();
+            lblEspMaxDistance = new Label();
+            chkShowAllies = new CheckBox();
+            chkEspShowNames = new CheckBox();
+            chkEspShowDistance = new CheckBox();
+            chkEspShowHealth = new CheckBox();
+            txtEspFontSize = new TextBox();
+            lblEspFontSize = new Label();
+            txtEspColorA = new TextBox();
+            lblEspColorA = new Label();
+            txtEspColorR = new TextBox();
+            lblEspColorR = new Label();
+            txtEspColorG = new TextBox();
+            lblEspColorG = new Label();
+            txtEspColorB = new TextBox();
+            lblEspColorB = new Label();
+            lblFirstScopeMag = new Label();
+            txtFirstScopeMag = new TextBox();
+            lblSecondScopeMag = new Label();
+            txtSecondScopeMag = new TextBox();
+            lblThirdScopeMag = new Label();
+            txtThirdScopeMag = new TextBox();
+            grpRadar = new GroupBox();
             grpLocalSoldier = new GroupBox();
             chkDisableSuppression = new CheckBox();
             chkSetInteractionDistances = new CheckBox();
@@ -89,37 +120,6 @@ namespace squad_dma
             btnKeybindZoomIn = new Button();
             lblKeybindZoomOut = new Label();
             btnKeybindZoomOut = new Button();
-            lblStatusQuickZoom = new Label();
-            grpUserInterface = new GroupBox();
-            lblUIScale = new Label();
-            lblAimline = new Label();
-            lblTechMarkerScale = new Label();
-            grpRadar = new GroupBox();
-            grpEsp = new GroupBox();
-            chkEnableEsp = new CheckBox();
-            chkEnableBones = new CheckBox();
-            trkEspMaxDistance = new TrackBar();
-            lblEspMaxDistance = new Label();
-            chkShowAllies = new CheckBox();
-            chkEspShowNames = new CheckBox();
-            chkEspShowDistance = new CheckBox();
-            chkEspShowHealth = new CheckBox();
-            txtEspFontSize = new TextBox();
-            lblEspFontSize = new Label();
-            txtEspColorA = new TextBox();
-            lblEspColorA = new Label();
-            txtEspColorR = new TextBox();
-            lblEspColorR = new Label();
-            txtEspColorG = new TextBox();
-            lblEspColorG = new Label();
-            txtEspColorB = new TextBox();
-            lblEspColorB = new Label();
-            lblFirstScopeMag = new Label();
-            txtFirstScopeMag = new TextBox();
-            lblSecondScopeMag = new Label();
-            txtSecondScopeMag = new TextBox();
-            lblThirdScopeMag = new Label();
-            txtThirdScopeMag = new TextBox();
             tabRadar = new TabPage();
             ticketsPanel = new Panel();
             grpMapSetup = new GroupBox();
@@ -354,7 +354,17 @@ namespace squad_dma
             grpWriteSettings.TabStop = false;
             grpWriteSettings.Text = "Write Settings";
             // 
-            // chkEnableNoRecoil
+            // lblUIScale
+            // 
+            lblUIScale.AutoSize = true;
+            lblUIScale.Font = new Font("Segoe UI", 9F);
+            lblUIScale.Location = new Point(15, 30);
+            lblUIScale.Name = "lblUIScale";
+            lblUIScale.Size = new Size(48, 15);
+            lblUIScale.TabIndex = 13;
+            lblUIScale.Text = "UI Scale";
+            // 
+            // lblAimline
             // 
             chkEnableNoRecoil.AutoSize = true;
             chkEnableNoRecoil.Location = new Point(10, 25);
@@ -544,8 +554,7 @@ namespace squad_dma
             grpKeybinds.Controls.Add(btnKeybindZoomIn);
             grpKeybinds.Controls.Add(lblKeybindZoomOut);
             grpKeybinds.Controls.Add(btnKeybindZoomOut);
-            grpKeybinds.Controls.Add(lblStatusQuickZoom);
-            grpKeybinds.Location = new Point(503, 23);
+            grpKeybinds.Location = new Point(530, 24);
             grpKeybinds.Name = "grpKeybinds";
             grpKeybinds.Padding = new Padding(15);
             grpKeybinds.Size = new Size(528, 370);
@@ -606,7 +615,7 @@ namespace squad_dma
             // 
             // lblKeybindQuickZoom
             // 
-            lblKeybindQuickZoom.Location = new Point(15, 120);
+            lblKeybindQuickZoom.Location = new Point(15, 150);
             lblKeybindQuickZoom.Name = "lblKeybindQuickZoom";
             lblKeybindQuickZoom.Size = new Size(200, 20);
             lblKeybindQuickZoom.TabIndex = 8;
@@ -614,7 +623,7 @@ namespace squad_dma
             // 
             // btnKeybindQuickZoom
             // 
-            btnKeybindQuickZoom.Location = new Point(220, 120);
+            btnKeybindQuickZoom.Location = new Point(220, 150);
             btnKeybindQuickZoom.Name = "btnKeybindQuickZoom";
             btnKeybindQuickZoom.Size = new Size(100, 20);
             btnKeybindQuickZoom.TabIndex = 9;
@@ -623,7 +632,7 @@ namespace squad_dma
             // 
             // lblKeybindToggleEnemyDistance
             // 
-            lblKeybindToggleEnemyDistance.Location = new Point(15, 150);
+            lblKeybindToggleEnemyDistance.Location = new Point(15, 120);
             lblKeybindToggleEnemyDistance.Name = "lblKeybindToggleEnemyDistance";
             lblKeybindToggleEnemyDistance.Size = new Size(200, 20);
             lblKeybindToggleEnemyDistance.TabIndex = 10;
@@ -631,7 +640,7 @@ namespace squad_dma
             // 
             // btnKeybindToggleEnemyDistance
             // 
-            btnKeybindToggleEnemyDistance.Location = new Point(220, 150);
+            btnKeybindToggleEnemyDistance.Location = new Point(220, 120);
             btnKeybindToggleEnemyDistance.Name = "btnKeybindToggleEnemyDistance";
             btnKeybindToggleEnemyDistance.Size = new Size(100, 20);
             btnKeybindToggleEnemyDistance.TabIndex = 11;
@@ -702,7 +711,7 @@ namespace squad_dma
             // lblStatusToggleEnemyDistance
             // 
             lblStatusToggleEnemyDistance.AutoSize = true;
-            lblStatusToggleEnemyDistance.Location = new Point(330, 150);
+            lblStatusToggleEnemyDistance.Location = new Point(330, 120);
             lblStatusToggleEnemyDistance.Name = "lblStatusToggleEnemyDistance";
             lblStatusToggleEnemyDistance.Size = new Size(28, 15);
             lblStatusToggleEnemyDistance.TabIndex = 24;
@@ -758,15 +767,6 @@ namespace squad_dma
             btnKeybindZoomOut.TabIndex = 23;
             btnKeybindZoomOut.Text = "Down";
             btnKeybindZoomOut.Click += BtnKeybindZoomOut_Click;
-            // 
-            // lblStatusQuickZoom
-            // 
-            lblStatusQuickZoom.AutoSize = true;
-            lblStatusQuickZoom.Location = new Point(330, 120);
-            lblStatusQuickZoom.Name = "lblStatusQuickZoom";
-            lblStatusQuickZoom.Size = new Size(28, 15);
-            lblStatusQuickZoom.TabIndex = 25;
-            lblStatusQuickZoom.Text = "OFF";
             // 
             // grpUserInterface
             // 
@@ -1314,7 +1314,6 @@ namespace squad_dma
         private Button btnKeybindZoomOut;
         private Label lblKeybindQuickZoom;
         private Button btnKeybindQuickZoom;
-        private Label lblStatusQuickZoom;
         private Label lblTechMarkerScale;
         private TrackBar trkTechMarkerScale;
 

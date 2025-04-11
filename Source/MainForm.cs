@@ -22,6 +22,7 @@ namespace squad_dma
         private readonly Dictionary<UActor, Vector3> _aaProjectileOrigins = new();
         private readonly List<PointOfInterest> _pointsOfInterest = new();
         private System.Windows.Forms.Timer _panTimer;
+        private GameStatus _previousGameStatus = GameStatus.NotFound;
 
         private bool _isFreeMapToggled;
         private bool _isDragging;
@@ -202,8 +203,6 @@ namespace squad_dma
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            if (!InGame) return base.ProcessCmdKey(ref msg, keyData);
-
             if (keyData == _config.KeybindSpeedHack && chkSpeedHack.Checked)
             {
                 _config.SetSpeedHack = !_config.SetSpeedHack;
@@ -216,8 +215,6 @@ namespace squad_dma
                 _config.SetAirStuck = !_config.SetAirStuck;
                 Memory._game?.SetAirStuck(_config.SetAirStuck);
                 UpdateStatusIndicator(lblStatusAirStuck, _config.SetAirStuck);
-
-                // If DisableCollision is checked, toggle it along with AirStuck
                 if (chkDisableCollision.Checked)
                 {
                     _config.DisableCollision = _config.SetAirStuck;
@@ -295,7 +292,6 @@ namespace squad_dma
             if (statusLabel == lblStatusSpeedHack ||
                 statusLabel == lblStatusAirStuck ||
                 statusLabel == lblStatusHideActor ||
-                statusLabel == lblStatusQuickZoom ||
                 statusLabel == lblStatusToggleEnemyDistance)
             {
                 statusLabel.Text = isEnabled ? "ON" : "OFF";
@@ -356,7 +352,6 @@ namespace squad_dma
             UpdateStatusIndicator(lblStatusSpeedHack, _config.SetSpeedHack);
             UpdateStatusIndicator(lblStatusAirStuck, _config.SetAirStuck);
             UpdateStatusIndicator(lblStatusHideActor, _config.SetHideActor);
-            UpdateStatusIndicator(lblStatusQuickZoom, _config.QuickZoom);
             UpdateStatusIndicator(lblStatusToggleEnemyDistance, _config.ShowEnemyDistance);
         }
 
@@ -376,20 +371,18 @@ namespace squad_dma
             bool alt = ModifierKeys.HasFlag(Keys.Alt);
 
             // Hold-to-activate features
-            if (_config.KeybindQuickZoom != Keys.None && InputManager.IsKeyDown(_config.KeybindQuickZoom))
+            if (_config.KeybindQuickZoom != Keys.None && InputManager.IsKeyDown(_config.KeybindQuickZoom) && chkQuickZoom.Checked)
             {
                 if (!_isHolding_QuickZoom)
                 {
                     Memory._game?.SetQuickZoom(true);
                     _isHolding_QuickZoom = true;
-                    UpdateStatusIndicator(lblStatusQuickZoom, true);
                 }
             }
             else if (_isHolding_QuickZoom)
             {
                 Memory._game?.SetQuickZoom(false);
                 _isHolding_QuickZoom = false;
-                UpdateStatusIndicator(lblStatusQuickZoom, false);
             }
 
             // Handle zoom controls
@@ -508,8 +501,11 @@ namespace squad_dma
                 int dx = (int)((e.X - _lastMousePosition.X) * DRAG_SENSITIVITY);
                 int dy = (int)((e.Y - _lastMousePosition.Y) * DRAG_SENSITIVITY);
 
-                _targetPanPosition.X -= dx;
-                _targetPanPosition.Y -= dy;
+                _targetPanPosition.X -= dx / _config.DefaultZoom * 20; 
+                _targetPanPosition.Y -= dy / _config.DefaultZoom * 20;
+
+                _mapPanPosition.X = _targetPanPosition.X;
+                _mapPanPosition.Y = _targetPanPosition.Y;
 
                 if (!_panTimer.Enabled)
                     _panTimer.Start();
@@ -805,53 +801,6 @@ namespace squad_dma
 
             _mapCanvas.GRContext.SetResourceCacheLimit(1610612736); // Fixes low FPS on big maps
 
-            // Apply settings once game is ready
-            if (Memory.Ready && Memory.InGame)
-            {
-                // Wait for the local player to be fully initialized
-                for (int i = 0; i < 10; i++) // Try for a few seconds
-                {
-                    if (Memory._game != null)
-                    {
-                        // Make sure features are applied after the player is fully loaded
-                        await Task.Delay(1000); // Give a bit more time for everything to initialize
-                        
-                        if (_config.DisableSuppression)
-                            Memory._game?.SetSuppression(true);
-                        
-                        if (_config.SetInteractionDistances)
-                            Memory._game?.SetInteractionDistances(true);
-                        
-                        if (_config.AllowShootingInMainBase)
-                            Memory._game?.SetShootingInMainBase(true);
-                        
-                        if (_config.SetSpeedHack)
-                            Memory._game?.SetSpeedHack(true);
-                        
-                        if (_config.SetAirStuck)
-                            Memory._game?.SetAirStuck(true);
-                        
-                        if (_config.SetHideActor)
-                            Memory._game?.SetHideActor(true);
-                            
-                        if (_config.RapidFire)
-                            Memory._game?.SetRapidFire(true);
-                            
-                        if (_config.InfiniteAmmo)
-                            Memory._game?.SetInfiniteAmmo(true);
-                            
-                        if (_config.QuickSwap)
-                            Memory._game?.SetQuickSwap(true);
-                            
-                        if (_config.DisableCollision)
-                            Memory._game?.DisableCollision(true);
-                            
-                            break;
-                    }
-                    await Task.Delay(500);
-                }
-            }
-
             while (true)
             {
                 await Task.Run(() => Thread.SpinWait(25000)); // High performance async delay
@@ -922,6 +871,95 @@ namespace squad_dma
         private void TabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
             // Handle tab control selection changes if needed
+        }
+
+        private void HandleGameStateChange()
+        {
+            var currentGameStatus = Memory.GameStatus;
+            
+            if (currentGameStatus == _previousGameStatus)
+            {
+                if (currentGameStatus == GameStatus.InGame && Memory._game != null)
+                {
+                    UpdateTicketsDisplay();
+                }
+                return;
+            }
+                        
+            if (currentGameStatus == GameStatus.InGame)
+            {
+                _lastFriendlyTickets = 0;
+                _lastEnemyTickets = 0;
+                _lastKills = 0;
+                _lastWoundeds = 0;
+                ticketsPanel.Invalidate();
+                
+                Task.Run(async () => await ApplyFeaturesAsync());
+            }
+            else if (currentGameStatus == GameStatus.Menu && _previousGameStatus == GameStatus.InGame)
+            {
+                _lastFriendlyTickets = 0;
+                _lastEnemyTickets = 0;
+                _lastKills = 0;
+                _lastWoundeds = 0;
+                ticketsPanel.Invalidate();
+                
+                ClearPointsOfInterest();
+            }
+            else if (currentGameStatus == GameStatus.NotFound)
+            {
+                _lastFriendlyTickets = 0;
+                _lastEnemyTickets = 0;
+                _lastKills = 0;
+                _lastWoundeds = 0;
+                ticketsPanel.Invalidate();
+            }
+            
+            _previousGameStatus = currentGameStatus;
+        }
+
+        private async Task ApplyFeaturesAsync()
+        {
+            for (int i = 0; i < 10; i++) 
+            {
+                if (Memory._game != null)
+                {
+                    await Task.Delay(1000); 
+                    
+                    if (_config.DisableSuppression)
+                        Memory._game?.SetSuppression(true);
+                    
+                    if (_config.SetInteractionDistances)
+                        Memory._game?.SetInteractionDistances(true);
+                    
+                    if (_config.AllowShootingInMainBase)
+                        Memory._game?.SetShootingInMainBase(true);
+                    
+                    if (_config.SetSpeedHack)
+                        Memory._game?.SetSpeedHack(true);
+                    
+                    if (_config.SetAirStuck)
+                        Memory._game?.SetAirStuck(true);
+                    
+                    if (_config.SetHideActor)
+                        Memory._game?.SetHideActor(true);
+                        
+                    if (_config.RapidFire)
+                        Memory._game?.SetRapidFire(true);
+                        
+                    if (_config.InfiniteAmmo)
+                        Memory._game?.SetInfiniteAmmo(true);
+                        
+                    if (_config.QuickSwap)
+                        Memory._game?.SetQuickSwap(true);
+                        
+                    if (_config.DisableCollision)
+                        Memory._game?.DisableCollision(true);
+                        
+                    break;
+                }
+                await Task.Delay(500);
+            }
         }
         #endregion
 
@@ -994,21 +1032,6 @@ namespace squad_dma
                 _lastKills = kills;
                 _lastWoundeds = woundeds;
                 ticketsPanel.Invalidate();
-            }
-        }
-
-        private void HandleGameStateChange()
-        {
-            if (Memory.GameStatus != GameStatus.InGame || Memory._game == null)
-            {
-                _lastFriendlyTickets = 0;
-                _lastEnemyTickets = 0;
-                ticketsPanel.Invalidate();
-            }
-            else if (Memory.GameStatus == GameStatus.InGame &&
-                    (_lastFriendlyTickets == 0 && _lastEnemyTickets == 0))
-            {
-                UpdateTicketsDisplay();
             }
         }
 
@@ -1132,17 +1155,18 @@ namespace squad_dma
 
                 if (_isFreeMapToggled)
                 {
-                    _mapPanPosition = new MapPosition()
-                    {
-                        X = localPlayerMapPos.X,
-                        Y = localPlayerMapPos.Y,
-                        Height = localPlayerMapPos.Height,
-                        TechScale = (.01f * _config.TechMarkerScale)
-                    };
+                    _mapPanPosition.Height = localPlayerMapPos.Height;
+                    _mapPanPosition.TechScale = (.01f * _config.TechMarkerScale);
                     return GetMapParameters(_mapPanPosition);
                 }
                 else
+                {
+                    _mapPanPosition.X = localPlayerMapPos.X;
+                    _mapPanPosition.Y = localPlayerMapPos.Y;
+                    _mapPanPosition.Height = localPlayerMapPos.Height;
+                    _mapPanPosition.TechScale = (.01f * _config.TechMarkerScale);
                     return GetMapParameters(localPlayerMapPos);
+                }
             }
             else
             {
@@ -1673,10 +1697,11 @@ namespace squad_dma
 
         private void DrawStatusText(SKCanvas canvas)
         {
-            string statusText = !Ready ? "Game Process Not Running" :
-                              !InGame ? "Waiting for Game Start..." :
-                              LocalPlayer is null ? "Cannot find LocalPlayer" :
-                              _selectedMap is null ? "Loading Map" : null;
+            string statusText = Memory.GameStatus == GameStatus.NotFound ? "Game Not Running" :
+                                !Ready ? "Game Process Not Running" :
+                                !InGame ? "Waiting for Game Start..." :
+                                LocalPlayer is null ? "Cannot find LocalPlayer" :
+                                _selectedMap is null ? "Loading Map" : null;
 
             if (statusText != null)
             {
@@ -1747,34 +1772,42 @@ namespace squad_dma
         #region Event Handlers
         private void chkMapFree_CheckedChanged(object sender, EventArgs e)
         {
+            _isFreeMapToggled = chkMapFree.Checked;
+            
             if (_isFreeMapToggled)
             {
-                chkMapFree.Text = "Map Follow";
-                _isFreeMapToggled = false;
-
-                lock (_renderLock)
+                chkMapFree.Text = "Map Free";
+                
+                var localPlayer = this.LocalPlayer;
+                if (localPlayer is not null)
                 {
-                    var localPlayer = this.LocalPlayer;
-                    if (localPlayer is not null)
-                    {
-                        var localPlayerMapPos = (localPlayer.Position + AbsoluteLocation).ToMapPos(_selectedMap);
-                        _mapPanPosition = new MapPosition()
-                        {
-                            X = localPlayerMapPos.X,
-                            Y = localPlayerMapPos.Y,
-                            Height = localPlayerMapPos.Height,
-                            TechScale = (.01f * _config.TechMarkerScale)
-                        };
-                    }
+                    var localPlayerMapPos = (localPlayer.Position + AbsoluteLocation).ToMapPos(_selectedMap);
+                    _targetPanPosition = new SKPoint(localPlayerMapPos.X, localPlayerMapPos.Y);
+                    _mapPanPosition.X = localPlayerMapPos.X;
+                    _mapPanPosition.Y = localPlayerMapPos.Y;
+                    _mapPanPosition.Height = localPlayerMapPos.Height;
+                    _mapPanPosition.TechScale = (.01f * _config.TechMarkerScale);
                 }
             }
             else
             {
-                chkMapFree.Text = "Map Free";
-                _isFreeMapToggled = true;
+                chkMapFree.Text = "Map Follow";
+                
+                var localPlayer = this.LocalPlayer;
+                if (localPlayer is not null)
+                {
+                    var localPlayerMapPos = (localPlayer.Position + AbsoluteLocation).ToMapPos(_selectedMap);
+                    _targetPanPosition = new SKPoint(localPlayerMapPos.X, localPlayerMapPos.Y);
+                    _mapPanPosition.X = localPlayerMapPos.X;
+                    _mapPanPosition.Y = localPlayerMapPos.Y;
+                    _mapPanPosition.Height = localPlayerMapPos.Height;
+                    _mapPanPosition.TechScale = (.01f * _config.TechMarkerScale);
+                }
             }
+            
+            _mapCanvas.Invalidate();
         }
-
+        
         private void btnApplyMapScale_Click(object sender, EventArgs e)
         {
             if (float.TryParse(txtMapSetupX.Text, out float x)
@@ -1869,19 +1902,23 @@ namespace squad_dma
 
         private bool DumpNames()
         {
+            if (!InGame) return false;
+
             Memory._game.LogVehicles(force: true);
             return true;
         }
 
         private void btnDumpNames_Click(object sender, EventArgs e)
         {
-            // Remove the old functionality and just dump names
+            if (!InGame) return;
+
             Memory._game.LogVehicles(force: true);
         }
 
         private void ChkShowEnemyDistance_CheckedChanged(object sender, EventArgs e)
         {
             _config.ShowEnemyDistance = chkShowEnemyDistance.Checked;
+            UpdateStatusIndicator(lblStatusToggleEnemyDistance, _config.ShowEnemyDistance);
             _mapCanvas.Invalidate();
             Config.SaveConfig(_config);
         }
@@ -1889,7 +1926,7 @@ namespace squad_dma
         private void trkUIScale_Scroll(object sender, EventArgs e)
         {
             _config.UIScale = trkUIScale.Value;
-            _uiScale = (.01f * trkUIScale.Value);
+            _uiScale = .01f * trkUIScale.Value;
 
             InitiateUIScaling();
         }
@@ -1898,7 +1935,6 @@ namespace squad_dma
         {
             _config.TechMarkerScale = trkTechMarkerScale.Value;
             
-            // Update the MapPanPosition for free map mode
             if (_isFreeMapToggled)
             {
                 _mapPanPosition.TechScale = .01f * _config.TechMarkerScale;
@@ -1910,6 +1946,8 @@ namespace squad_dma
 
         private void ChkDisableSuppression_CheckedChanged(object sender, EventArgs e)
         {
+            if (!InGame) return;
+
             _config.DisableSuppression = chkDisableSuppression.Checked;
             Memory._game?.SetSuppression(chkDisableSuppression.Checked);
             Config.SaveConfig(_config);
@@ -1918,8 +1956,6 @@ namespace squad_dma
         private void ChkSetInteractionDistances_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
-
-            // Apply settings based on checkbox state directly
             _config.SetInteractionDistances = chkSetInteractionDistances.Checked;
             Memory._game?.SetInteractionDistances(_config.SetInteractionDistances);
             Config.SaveConfig(_config);
@@ -1928,8 +1964,6 @@ namespace squad_dma
         private void ChkAllowShootingInMainBase_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
-
-            // Apply settings based on checkbox state directly
             _config.AllowShootingInMainBase = chkAllowShootingInMainBase.Checked;
             Memory._game?.SetShootingInMainBase(_config.AllowShootingInMainBase);
             Config.SaveConfig(_config);
@@ -1950,14 +1984,10 @@ namespace squad_dma
         private void ChkAirStuck_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
-
-            // Just update the config, don't enable the feature
+            
             _config.SetAirStuck = chkAirStuck.Checked;
-
-            // Enable/disable DisableCollision checkbox based on AirStuck checkbox
+            
             chkDisableCollision.Enabled = chkAirStuck.Checked;
-
-            // If AirStuck checkbox is unchecked, uncheck DisableCollision checkbox too
             if (!chkAirStuck.Checked && chkDisableCollision.Checked)
             {
                 chkDisableCollision.Checked = false;
@@ -1970,15 +2000,11 @@ namespace squad_dma
         private void ChkDisableCollision_CheckedChanged(object sender, EventArgs e)
         {
             if (!InGame) return;
-
-            // Only allow checking if AirStuck is checked
             if (chkDisableCollision.Checked && !chkAirStuck.Checked)
             {
                 chkDisableCollision.Checked = false;
                 return;
             }
-
-            // Just update the config, don't enable the feature
             _config.DisableCollision = chkDisableCollision.Checked;
             Config.SaveConfig(_config);
         }

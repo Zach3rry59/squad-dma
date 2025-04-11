@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 
-namespace squad_dma.Source.Squad.Features
+namespace squad_dma.Source.Squad.Debug
 {
     public class DebugTeam
     {

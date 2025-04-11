@@ -616,6 +616,7 @@ namespace squad_dma {
             {"BP_40MM_MK19_Proj_C", ActorType.Projectile},
             {"BP_Mortarround_120mm_C", ActorType.Projectile},
             {"BP_SPG9_pg9v_Heat_Proj2_C", ActorType.Projectile},
+            {"BP_Mortarround_120mm_Airburst_C", ActorType.Projectile},
             
             {"BP_SquadRallyPoint_C", ActorType.RallyPoint},
 
@@ -770,6 +771,7 @@ namespace squad_dma {
             {"SD_BP_Tigr_RWS_GAU_Desert_C", ActorType.JeepRWSTurret},
             {"BP_BMC_Kirpi_Desert_C", ActorType.JeepRWSTurret},
             {"SD_BP_M113A3_Logistics_C", ActorType.TrackedLogistics},
+            {"SD_BP_MTLB_LOGI_RUS_Desert_C", ActorType.JeepLogistics},
 
             {"SD_BP_minsk_Child_C", ActorType.Motorcycle},
 
@@ -817,6 +819,9 @@ namespace squad_dma {
             {"SD_BP_UH1Y_Mk19_PMC_C", ActorType.TransportHelicopter},
             {"SD_BP_UH1Y_ATGM_PMC_C", ActorType.TransportHelicopter},
             {"SD_BP_UH1Y_PMC_C", ActorType.TransportHelicopter},
+            {"SD_BP_UH1Y_Mk19_PMC_Desert_C", ActorType.TransportHelicopter},
+            {"SD_BP_UH1Y_ATGM_PMC_Desert_C", ActorType.TransportHelicopter},
+            {"SD_BP_UH1Y_PMC_Desert_C", ActorType.TransportHelicopter},
 
             {"SD_BP_RHIB_NSV_C", ActorType.Boat},
             {"SD_BP_RHIB_M2_C", ActorType.Boat},
@@ -844,8 +849,9 @@ namespace squad_dma {
             {"SD_BP_M1064_M121_TSF_Desert_C", ActorType.TrackedAPCArtillery},
             {"BP_M109A6_D_C", ActorType.TrackedAPCArtillery},
 
-            {"BP_Stinger_Base_Deployable_C", ActorType.DeployableAntitank }, // todo Change icon to better suit Steel Division Stingers
-            {"BP_Strela_Base_Deployable_C", ActorType.DeployableAntitank },
+            {"BP_Stinger_Base_Deployable_C", ActorType.DeployableAntitank},
+            {"BP_Strela_Base_Deployable_C", ActorType.DeployableAntitank},
+            {"SD_BP_120mortar_Deployable_C", ActorType.DeployableMortars},
 
             {"BP_HIMARS_Rocket_Proj2_C", ActorType.Projectile},
             {"BP_Projectile_155_29th_C", ActorType.Projectile},
