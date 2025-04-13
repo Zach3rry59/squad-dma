@@ -388,40 +388,67 @@ public bool InGame => _inGame;
         }
 
         private bool GetGameWorld() =>
-            TryExecute(() => _gameWorld = Memory.ReadPtr(_squadBase + Offsets.GameObjects.GWorld));
+            TryExecute(() =>
+            {
+                var gWorldAddress = _squadBase + Offsets.GameObjects.GWorld;
+                //Program.Log($"GWorld Address: {gWorldAddress:X}");
+                _gameWorld = Memory.ReadPtr(gWorldAddress);
+            });
 
         private bool GetGameInstance() =>
-            TryExecute(() => _gameInstance = Memory.ReadPtr(_gameWorld + Offsets.World.OwningGameInstance));
+            TryExecute(() =>
+            {
+                var gameInstanceAddress = _gameWorld + Offsets.World.OwningGameInstance;
+                //Program.Log($"GameInstance Address: {gameInstanceAddress:X}");
+                _gameInstance = Memory.ReadPtr(gameInstanceAddress);
+            });
 
         private bool GetCurrentLevel() =>
             TryExecute(() =>
             {
-                var currentLayer = Memory.ReadPtr(_gameInstance + Offsets.GameInstance.CurrentLayer);
-                var currentLevelIdPtr = currentLayer + Offsets.SQLayer.LevelID;
-                var currentLevelId = Memory.ReadValue<uint>(currentLevelIdPtr);
+                var currentLayerAddress = _gameInstance + Offsets.GameInstance.CurrentLayer;
+                //Program.Log($"CurrentLayer Address: {currentLayerAddress:X}");
+                var currentLayer = Memory.ReadPtr(currentLayerAddress);
+
+                var currentLevelIdAddress = currentLayer + Offsets.SQLayer.LevelID;
+                //Program.Log($"CurrentLevelId Address: {currentLevelIdAddress:X}");
+                var currentLevelId = Memory.ReadValue<uint>(currentLevelIdAddress);
+
                 _currentLevel = Memory.GetNamesById([currentLevelId])[currentLevelId];
-                Program.Log($"Current level is {_currentLevel}");
+                //Program.Log($"Current level is {_currentLevel}");
             });
 
         private bool InitActors() =>
             TryExecute(() =>
             {
-                var persistentLevel = Memory.ReadPtr(_gameWorld + Offsets.World.PersistentLevel);
+                var persistentLevelAddress = _gameWorld + Offsets.World.PersistentLevel;
+                //Program.Log($"PersistentLevel Address: {persistentLevelAddress:X}");
+                var persistentLevel = Memory.ReadPtr(persistentLevelAddress);
                 _actors = new RegistredActors(persistentLevel);
             });
 
         private bool GetLocalPlayer() =>
             TryExecute(() =>
             {
-                var localPlayers = Memory.ReadPtr(_gameInstance + Offsets.GameInstance.LocalPlayers);
+                var localPlayersAddress = _gameInstance + Offsets.GameInstance.LocalPlayers;
+                //Program.Log($"LocalPlayers Address: {localPlayersAddress:X}");
+                var localPlayers = Memory.ReadPtr(localPlayersAddress);
+
+                Program.Log($"LocalPlayer Address: {localPlayers:X}");
                 _localPlayer = Memory.ReadPtr(localPlayers);
+
                 _localUPlayer = new UActor(_localPlayer);
                 _localUPlayer.Team = Team.Unknown;
                 GetPlayerController();
             });
 
         private bool GetPlayerController() =>
-            TryExecute(() => _playerController = Memory.ReadPtr(_localPlayer + Offsets.UPlayer.PlayerController));
+            TryExecute(() =>
+            {
+                var playerControllerAddress = _localPlayer + Offsets.UPlayer.PlayerController;
+                _playerController = Memory.ReadPtr(playerControllerAddress);
+                Program.Log($"PlayerController Address: {_playerController:X}");
+            });
 
         private bool UpdateLocalPlayerInfo()
         {

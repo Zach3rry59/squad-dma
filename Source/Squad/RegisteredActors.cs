@@ -261,7 +261,7 @@ namespace squad_dma
                         teamInfoRound.AddEntry<int>(i, 9, pawnPlayerState, null, Offsets.ASQPlayerState.TeamID);
                         teamInfoRound.AddEntry<int>(i, 10, controllerPlayerState, null, Offsets.ASQPlayerState.TeamID);
 
-                        var meshPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 11, actorAddr + 0x288);
+                        var meshPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 11, actorAddr + Offsets.ASQSoldier.Mesh);
                         meshRound.AddEntry<FTransform>(i, 12, meshPtr, null, 0x1C0);
                         var boneArrayPtr = meshRound.AddEntry<ulong>(i, 13, meshPtr, null, 0x4B0);
 
@@ -279,8 +279,8 @@ namespace squad_dma
                     {
                         playerInstanceInfoRound.AddEntry<float>(i, 2, actorAddr + Offsets.SQVehicle.Health);
                         playerInstanceInfoRound.AddEntry<float>(i, 3, actorAddr + Offsets.SQVehicle.MaxHealth);
-                        var claimedBySquadPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 14, actorAddr + 0x530); //Hardcoded
-                        teamInfoRound.AddEntry<int>(i, 15, claimedBySquadPtr, null, 0x2AC); //Hardcoded
+                        var claimedBySquadPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 14, actorAddr + SQVehicle.ClaimedBySquad);
+                        teamInfoRound.AddEntry<int>(i, 15, claimedBySquadPtr, null, ASQSquadState.TeamId);
                     }
 
                     instigatorAndRootRound.AddEntry<Vector3>(i, 4, rootComponent, null, Offsets.USceneComponent.RelativeLocation);

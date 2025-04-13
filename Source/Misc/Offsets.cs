@@ -48,7 +48,7 @@
     {
         public const uint RelativeLocation = 0x11C;
         public const uint RelativeRotation = 0x128;
-        public const uint ComponentToWorld = 0x14C; // Relative Offset Guess
+        public const uint ComponentToWorld = 0x1C0; // Relative Offset Guess
         public const uint RelativeScale3D = 0x134;
         public const uint RelativeLocationComp2World = 0x1D0;
     }
@@ -367,7 +367,8 @@
     public struct SQVehicle
     {
         public const uint Health = 0x868;
-        public const uint MaxHealth = 0x86C;
+        public const uint MaxHealth = 0x86C; 
+        public const uint ClaimedBySquad = 0x530;
     }
 
     public struct SQDeployable
