@@ -212,8 +212,12 @@ namespace squad_dma
                 GetPlayerController();
             });
 
-        private bool GetPlayerController() => 
-            TryExecute(() => _playerController = Memory.ReadPtr(_localPlayer + Offsets.UPlayer.PlayerController));
+        private bool GetPlayerController() =>
+            TryExecute(() =>
+            {
+                _playerController = Memory.ReadPtr(_localPlayer + Offsets.UPlayer.PlayerController);
+                Program.Log($"PlayerController: {_playerController}");
+            });
 
         private bool UpdateLocalPlayerInfo()
         {
