@@ -3,6 +3,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Numerics;
 
 namespace squad_dma
 {
@@ -226,7 +227,7 @@ namespace squad_dma
             try
             {
                 var count = _actors.Count;
-                if (count < 10) 
+                if (count < 10)
                     throw new GameEnded();
                 var actorBases = _actors.Values.Select(actor => actor.Base).Order().ToArray();
 
@@ -234,6 +235,10 @@ namespace squad_dma
                 var playerInstanceInfoRound = playerInfoScatterMap.AddRound();
                 var instigatorAndRootRound = playerInfoScatterMap.AddRound();
                 var teamInfoRound = playerInfoScatterMap.AddRound();
+                var meshRound = playerInfoScatterMap.AddRound();
+                var boneInfoRound = playerInfoScatterMap.AddRound();
+
+                int[] boneIds = { 7, 6, 5, 3, 2, 65, 66, 67, 68, 92, 93, 94, 95, 130, 131, 132, 125, 126, 127 };
 
                 for (int i = 0; i < count; i++)
                 {
@@ -252,6 +257,15 @@ namespace squad_dma
 
                         teamInfoRound.AddEntry<int>(i, 6, pawnPlayerState, null, Offsets.ASQPlayerState.TeamID);
                         teamInfoRound.AddEntry<int>(i, 7, controllerPlayerState, null, Offsets.ASQPlayerState.TeamID);
+
+                        var meshPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 8, actorAddr + Offsets.Character.Mesh);
+                        meshRound.AddEntry<FTransform>(i, 9, meshPtr, null, Offsets.USceneComponent.ComponentToWorld);
+                        var boneArrayPtr = meshRound.AddEntry<ulong>(i, 10, meshPtr, null, Offsets.USkeletalMeshComponent.BonesArray);
+
+                        for (int j = 0; j < boneIds.Length; j++)
+                        {
+                            boneInfoRound.AddEntry<FTransform>(i, 11 + j, boneArrayPtr, null, (uint)(boneIds[j] * 96));
+                        }
                     }
                     else if (Names.Deployables.Contains(actorType))
                     {
@@ -262,15 +276,18 @@ namespace squad_dma
                     {
                         playerInstanceInfoRound.AddEntry<float>(i, 2, actorAddr + Offsets.SQVehicle.Health);
                         playerInstanceInfoRound.AddEntry<float>(i, 3, actorAddr + Offsets.SQVehicle.MaxHealth);
+                        var claimedBySquadPtr = playerInstanceInfoRound.AddEntry<ulong>(i, 4, actorAddr + Offsets.SQVehicle.ClaimedBySquad);
+                        teamInfoRound.AddEntry<int>(i, 5, claimedBySquadPtr, null, Offsets.ASQSquadState.TeamId);
                     }
 
-                    instigatorAndRootRound.AddEntry<double>(i, 8, rootComponent, null, Offsets.USceneComponent.RelativeLocation);
-                    instigatorAndRootRound.AddEntry<double>(i, 9, rootComponent, null, Offsets.USceneComponent.RelativeLocation + 0x8);
-                    instigatorAndRootRound.AddEntry<double>(i, 10, rootComponent, null, Offsets.USceneComponent.RelativeLocation + 0x10);
-                    
-                    instigatorAndRootRound.AddEntry<double>(i, 11, rootComponent, null, Offsets.USceneComponent.RelativeRotation);
-                    instigatorAndRootRound.AddEntry<double>(i, 12, rootComponent, null, Offsets.USceneComponent.RelativeRotation + 0x8);
-                    instigatorAndRootRound.AddEntry<double>(i, 13, rootComponent, null, Offsets.USceneComponent.RelativeRotation + 0x10);
+                    // Use unique indices starting after player-specific entries
+                    instigatorAndRootRound.AddEntry<double>(i, 30, rootComponent, null, Offsets.USceneComponent.RelativeLocation);
+                    instigatorAndRootRound.AddEntry<double>(i, 31, rootComponent, null, Offsets.USceneComponent.RelativeLocation + 0x8);
+                    instigatorAndRootRound.AddEntry<double>(i, 32, rootComponent, null, Offsets.USceneComponent.RelativeLocation + 0x10);
+
+                    instigatorAndRootRound.AddEntry<double>(i, 33, rootComponent, null, Offsets.USceneComponent.RelativeRotation);
+                    instigatorAndRootRound.AddEntry<double>(i, 34, rootComponent, null, Offsets.USceneComponent.RelativeRotation + 0x8);
+                    instigatorAndRootRound.AddEntry<double>(i, 35, rootComponent, null, Offsets.USceneComponent.RelativeRotation + 0x10);
                 }
 
                 playerInfoScatterMap.Execute();
@@ -294,8 +311,8 @@ namespace squad_dma
                     }
 
                     if (results.TryGetValue(3, out var maxHpResult) &&
-                       maxHpResult.TryGetResult<float>(out var maxHp) &&
-                       maxHp > 0)
+                        maxHpResult.TryGetResult<float>(out var maxHp) &&
+                        maxHp > 0)
                     {
                         actor.Health = (hp / maxHp) * 100;
                     }
@@ -359,11 +376,10 @@ namespace squad_dma
                                         if (squadState != 0)
                                         {
                                             var squadId = Memory.ReadValue<int>(squadState + Offsets.ASQSquadState.SquadId);
-
                                             if (squadId > 0 && squadId < 1000)
                                             {
                                                 actor.SquadID = squadId;
-                                                _squadCache[actor.Base] = squadId; 
+                                                _squadCache[actor.Base] = squadId;
                                             }
                                         }
                                     }
@@ -371,19 +387,118 @@ namespace squad_dma
                                 catch { /* Silently fail */ }
                             }
                         }
+
+                        // Gestion des os
+                        if (results.TryGetValue(8, out var meshResult) && meshResult.TryGetResult<ulong>(out var meshAddr))
+                        {
+                            actor.Mesh = meshAddr;
+                            if (meshAddr == 0)
+                            {
+                                actor.BoneScreenPositions = new Vector2[boneIds.Length];
+                                Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
+                                continue;
+                            }
+
+                            if (results.TryGetValue(9, out var ctwResult) && ctwResult.TryGetResult<FTransform>(out var ctw))
+                            {
+                                actor.ComponentToWorld = ctw;
+                            }
+                            else
+                            {
+                                actor.BoneScreenPositions = new Vector2[boneIds.Length];
+                                Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
+                                continue;
+                            }
+
+                            if (results.TryGetValue(10, out var boneArrayResult) && boneArrayResult.TryGetResult<ulong>(out var boneArrayPtr))
+                            {
+                                if (boneArrayPtr == 0)
+                                {
+                                    actor.BoneScreenPositions = new Vector2[boneIds.Length];
+                                    Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
+                                    continue;
+                                }
+
+                                actor.BoneTransforms.Clear();
+                                var viewInfo = new MinimalViewInfo
+                                {
+                                    Location = Memory._game.LocalPlayer.Position,
+                                    Rotation = Memory._game.LocalPlayer.Rotation3D,
+                                    FOV = Memory._game.CurrentFOV
+                                };
+                                actor.BoneScreenPositions = new Vector2[boneIds.Length];
+
+                                bool anyBoneSuccess = false;
+                                for (int j = 0; j < boneIds.Length; j++)
+                                {
+                                    if (results.TryGetValue(11 + j, out var boneResult) &&
+                                        boneResult.TryGetResult<FTransform>(out var boneTransform))
+                                    {
+                                        actor.BoneTransforms[boneIds[j]] = boneTransform;
+                                        Vector3D boneWorldPos = TransformToWorld(boneTransform, actor.ComponentToWorld);
+                                        actor.BoneScreenPositions[j] = Camera.WorldToScreen(viewInfo, boneWorldPos);
+                                        if (actor.BoneScreenPositions[j] != Vector2.Zero)
+                                        {
+                                            anyBoneSuccess = true;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        actor.BoneScreenPositions[j] = Vector2.Zero;
+                                    }
+                                }
+
+                                if (!anyBoneSuccess)
+                                {
+                                    Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
+                                }
+                            }
+                            else
+                            {
+                                actor.BoneScreenPositions = new Vector2[boneIds.Length];
+                                Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
+                            }
+                        }
+                        else
+                        {
+                            actor.Mesh = 0;
+                            actor.BoneScreenPositions = new Vector2[boneIds.Length];
+                            Array.Clear(actor.BoneScreenPositions, 0, actor.BoneScreenPositions.Length);
+                        }
+                    }
+                    else if (!Names.Deployables.Contains(actor.ActorType)) // Vehicle
+                    {
+                        if (results.TryGetValue(4, out var claimedBySquadResult) &&
+                            claimedBySquadResult.TryGetResult<ulong>(out var claimedBySquad) &&
+                            claimedBySquad != 0)
+                        {
+                            if (results.TryGetValue(5, out var vehicleTeamResult) &&
+                                vehicleTeamResult.TryGetResult<int>(out var vehicleTeamId))
+                            {
+                                actor.TeamID = vehicleTeamId;
+                            }
+                            else
+                            {
+                                actor.TeamID = -1;
+                            }
+                        }
+                        else
+                        {
+                            actor.TeamID = -1;
+                        }
                     }
 
-                    if (results.TryGetValue(8, out var xResult) && results.TryGetValue(9, out var yResult) && 
-                        results.TryGetValue(10, out var zResult) &&
-                        xResult.TryGetResult<double>(out var x) && yResult.TryGetResult<double>(out var y) && 
+                    if (results.TryGetValue(30, out var xResult) && results.TryGetValue(31, out var yResult) &&
+                        results.TryGetValue(32, out var zResult) &&
+                        xResult.TryGetResult<double>(out var x) && yResult.TryGetResult<double>(out var y) &&
                         zResult.TryGetResult<double>(out var z))
                     {
                         actor.Position = new Vector3D(x, y, z);
                     }
 
-                    if (results.TryGetValue(11, out var rotXResult) && results.TryGetValue(12, out var rotYResult) && 
-                        results.TryGetValue(13, out var rotZResult) &&
-                        rotXResult.TryGetResult<double>(out var rotX) && rotYResult.TryGetResult<double>(out var rotY) && 
+                    if (results.TryGetValue(33, out var rotXResult) && results.TryGetValue(34, out var rotYResult) &&
+                        results.TryGetValue(35, out var rotZResult) &&
+                        rotXResult.TryGetResult<double>(out var rotX) && rotYResult.TryGetResult<double>(out var rotY) &&
                         rotZResult.TryGetResult<double>(out var rotZ))
                     {
                         var rotation = new Vector3D(rotX, rotY, rotZ);
@@ -407,6 +522,16 @@ namespace squad_dma
             {
                 Program.Log($"CRITICAL ERROR - UpdateAllPlayers Loop FAILED: {ex}");
             }
+        }
+
+        private Vector3D TransformToWorld(FTransform boneTransform, FTransform componentToWorld)
+        {
+            boneTransform.Scale3D = new Vector3D(1, 1, 1);
+            componentToWorld.Scale3D = new Vector3D(1, 1, 1);
+            Matrix4x4 boneMatrix = boneTransform.ToMatrix();
+            Matrix4x4 worldMatrix = componentToWorld.ToMatrix();
+            Matrix4x4 finalMatrix = boneMatrix * worldMatrix;
+            return new Vector3D(finalMatrix.M41, finalMatrix.M42, finalMatrix.M43);
         }
         #endregion
     }

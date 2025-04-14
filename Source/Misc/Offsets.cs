@@ -49,6 +49,8 @@
         public const uint RelativeLocation = 0x128;
         public const uint RelativeRotation = 0x140;
         public const uint RelativeScale3D = 0x158;
+
+        public const uint ComponentToWorld = 0x250; // Offset find with Reclass
     }
 
     public struct UPrimitiveComponent
@@ -102,6 +104,7 @@
         public const uint PCOwner = 0x2A0;
         public const uint DefaultFOV = 0x2B8;
         public const uint ViewTarget = 0x330;
+        public const uint CameraCache = 0x1370; // CachePrivate :: FCameraCacheEntry > 0x10 = FMinimalViewInfo 
     }
 
     public struct FTViewTarget
@@ -167,6 +170,12 @@
 
     public struct ASQWeapon
     {
+        public const uint bAimingDownSights = 0x834; // bool
+        public const uint CachedPipScope = 0x828; // USQPipScopeCaptureComponent*
+        public const uint CurrentFOV = 0x92c; // float
+        public const uint bFireInput = 0x835; // bool
+        public const uint WeaponStaticInfo = 0x590; // USQWeaponStaticInfo*
+        public const uint CurrentState = 0x820; // ESQWeaponState
         public const uint WeaponConfig = 0x750; // FSQWeaponData
     }
 
@@ -177,6 +186,12 @@
         public const uint TimeBetweenShots = 0x20; // float
         public const uint TimeBetweenSingleShots = 0x24; // float
         public const uint bCreateProjectileOnServer = 0x29; // bool
+    }
+
+    public struct USQPipScopeCaptureComponent
+    {
+        public const uint CurrentMagnificationLevel = 0xc78; // int32
+
     }
 
     public struct ASQEquipableItem
@@ -196,6 +211,7 @@
     {
         public const uint Health = 0x9F0;
         public const uint MaxHealth = 0x9F4;
+        public const uint ClaimedBySquad = 0x650;
     }
 
     public struct SQDeployable
@@ -211,8 +227,16 @@
 
     public struct Character
     {
+        public const uint Mesh = 0x328; // USkeletalMeshComponent*
         public const uint CharacterMovement = 0x330; // UCharacterMovementComponent*
         public const uint ReplicatedMovementMode = 0x428; // uint8
+
+    }
+
+    public struct USkeletalMeshComponent
+    {
+        public const uint BonesArray = 0x618; // BonesArray Tarray[FTransform]* Good luck use reclass & suffer
+
     }
 
     public struct CharacterMovementComponent

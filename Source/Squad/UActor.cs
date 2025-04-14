@@ -4,6 +4,19 @@ using System.Numerics;
 
 namespace squad_dma
 {
+    public struct QuaternionD
+    {
+        public double X;
+        public double Y;
+        public double Z;
+        public double W;
+
+        public double Norm()
+        {
+            return Math.Sqrt(X * X + Y * Y + Z * Z + W * W);
+        }
+    }
+
     public struct Vector3D
     {
         public double X;
@@ -18,6 +31,51 @@ namespace squad_dma
         }
 
         public static Vector3D Zero => new Vector3D(0, 0, 0);
+
+        public static double Dot(Vector3D a, Vector3D b)
+        {
+            return a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+        }
+
+        public static Vector3D operator -(Vector3D a, Vector3D b)
+        {
+            return new Vector3D(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+        }
+
+        public static float Distance(Vector3D a, Vector3D b)
+        {
+            double dx = a.X - b.X;
+            double dy = a.Y - b.Y;
+            double dz = a.Z - b.Z;
+            return (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
+        public Vector3 ToVector3()
+        {
+            return new Vector3((float)X, (float)Y, (float)Z);
+        }
+
+        public static bool operator ==(Vector3D a, Vector3D b)
+        {
+            return a.X == b.X && a.Y == b.Y && a.Z == b.Z;
+        }
+
+        public static bool operator !=(Vector3D a, Vector3D b)
+        {
+            return !(a == b);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (obj is Vector3D other)
+                return this == other;
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return (X, Y, Z).GetHashCode();
+        }
     }
 
     public struct Vector2D
@@ -50,9 +108,15 @@ namespace squad_dma
         public int SquadID { get; set; } = -1;
         public Team Team { get; set; } = Team.Unknown;
 
+        // Ajout des propriétés pour les os
+        public ulong Mesh { get; set; }
+        public FTransform ComponentToWorld { get; set; }
+        public Dictionary<int, FTransform> BoneTransforms { get; set; } = new Dictionary<int, FTransform>();
+        public Vector2[] BoneScreenPositions { get; set; }
+
         public bool IsFriendly()
         {
-            if (TeamID == -1) return false; 
+            if (TeamID == -1) return false;
 
             var localPlayer = Memory.LocalPlayer;
             if (localPlayer == null) return false;
@@ -82,13 +146,13 @@ namespace squad_dma
                 if (pawnPtr == 0) return;
 
                 // Read the current third-person status from memory
-                bInThirdPersonView = Memory.ReadValue<bool>(pawnPtr + 0x1654);
+                bInThirdPersonView = Memory.ReadValue<bool>(pawnPtr + 0x1654); // Vérifier cet offset pour UE5
 
                 // If in third-person, read camera settings
                 if (bInThirdPersonView)
                 {
-                    CameraOffset = Memory.ReadValue<Vector3D>(pawnPtr + 0x21D0);
-                    CameraDistance = Memory.ReadValue<double>(pawnPtr + 0x21DC);
+                    CameraOffset = Memory.ReadValue<Vector3D>(pawnPtr + 0x21D0); // Vérifier cet offset pour UE5
+                    CameraDistance = Memory.ReadValue<double>(pawnPtr + 0x21DC); // Vérifier cet offset pour UE5
                 }
             }
             catch { /* Silently handle errors */ }
@@ -119,7 +183,7 @@ namespace squad_dma
         public Vector3D Rotation3D { get; set; } = new Vector3D(0, 0, 0);
         public int ErrorCount { get; set; } = 0;
 
-        public Vector3D DeathPosition { get; set; } = Vector3D.Zero; 
+        public Vector3D DeathPosition { get; set; } = Vector3D.Zero;
         public DateTime TimeOfDeath { get; set; } = DateTime.MinValue;
 
         #endregion

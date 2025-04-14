@@ -296,7 +296,7 @@ namespace squad_dma
                 while (true)
                 {
                     Program.Log("Attempting to find Squad Process...");
-                    
+
                     while (!Memory.GetPid() || !Memory.GetModuleBase())
                     {
                         Memory.GameStatus = GameStatus.NotFound;
@@ -477,7 +477,7 @@ namespace squad_dma
             {
                 // Check if input pointer is null
                 if (ptr == 0) return 0;
-                
+
                 var addr = ReadValue<ulong>(ptr);
                 // Just return the address even if it's zero
                 return addr;
@@ -729,6 +729,21 @@ namespace squad_dma
         private static uint BYTE_OFFSET(ulong va)
         {
             return (uint)(va & (PAGE_SIZE - 1));
+        }
+
+        public static string GetActorClassName(ulong actorPtr)
+        {
+            try
+            {
+                var id = ReadValue<uint>(actorPtr + Offsets.Actor.ID);
+                var names = GetNamesById(new uint[] { id }.ToList());
+                return names.ContainsKey(id) ? names[id] : "Unknown";
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Error retrieving Actor name : {ex.Message}");
+                return "Unknown";
+            }
         }
         #endregion
     }

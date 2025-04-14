@@ -5,6 +5,8 @@ namespace squad_dma
 {
     public class Config
     {
+        public bool EnableBoneLogging { get; set; } = true;
+
         [JsonPropertyName("defaultZoom")]
         public int DefaultZoom { get; set; } = 100;
 
@@ -16,6 +18,9 @@ namespace squad_dma
 
         [JsonPropertyName("fontSize")]
         public int FontSize { get; set; } = 13;
+
+        [JsonPropertyName("paintColors")]
+        public Dictionary<string, PaintColor.Colors> PaintColors { get; set; }
 
         [JsonPropertyName("playerAimLine")]
         public int PlayerAimLineLength { get; set; } = 1000;
@@ -38,8 +43,49 @@ namespace squad_dma
         [JsonPropertyName("vsync")]
         public bool VSync { get; set; } = false;
 
+        // ESP
+        [JsonPropertyName("espFontSize")]
+        public float ESPFontSize { get; set; }
+
+        [JsonPropertyName("espShowDistance")]
+        public bool EspShowDistance { get; set; }
+
+        [JsonPropertyName("espShowHealth")]
+        public bool EspShowHealth { get; set; }
+
+        [JsonPropertyName("espShowBox")]
+        public bool EspShowBox { get; set; }
+
+        [JsonPropertyName("showNames")]
+        public bool ShowNames { get; set; }
+
+        [JsonPropertyName("espMaxDistance")]
+        public float EspMaxDistance { get; set; }
+
+        [JsonPropertyName("espTextColor")]
+        public PaintColor.Colors EspTextColor { get; set; }
+
         [JsonPropertyName("showEnemyDistance")]
         public bool ShowEnemyDistance { get; set; } = true;
+
+        [JsonPropertyName("enableEsp")]
+        public bool EnableEsp { get; set; }
+
+        [JsonPropertyName("espBones")]
+        public bool EspBones { get; set; }
+
+        [JsonPropertyName("espShowAllies")]
+        public bool EspShowAllies { get; set; }
+
+        // ESP Scope Magnifications
+        [JsonPropertyName("firstScopeMagnification")]
+        public float FirstScopeMagnification { get; set; }
+
+        [JsonPropertyName("secondScopeMagnification")]
+        public float SecondScopeMagnification { get; set; }
+
+        [JsonPropertyName("thirdScopeMagnification")]
+        public float ThirdScopeMagnification { get; set; }
 
         // Local Soldier Features
         [JsonPropertyName("disableSuppression")]
@@ -105,6 +151,17 @@ namespace squad_dma
         [JsonPropertyName("keybindZoomOut")]
         public Keys KeybindZoomOut { get; set; } = Keys.Down;
 
+        #region Json Ignore
+        [JsonIgnore]
+        public Dictionary<string, PaintColor.Colors> DefaultPaintColors = new Dictionary<string, PaintColor.Colors>()
+        {
+            ["Primary"] = new PaintColor.Colors { A = 255, R = 80, G = 80, B = 80 },
+            ["PrimaryDark"] = new PaintColor.Colors { A = 255, R = 50, G = 50, B = 50 },
+            ["PrimaryLight"] = new PaintColor.Colors { A = 255, R = 130, G = 130, B = 130 },
+            ["Accent"] = new PaintColor.Colors { A = 255, R = 255, G = 128, B = 0 },
+            ["EspText"] = new PaintColor.Colors { A = 255, R = 255, G = 255, B = 255 } // ESP
+        };
+
         [JsonIgnore]
         private static readonly JsonSerializerOptions _jsonOptions = new()
         {
@@ -118,6 +175,45 @@ namespace squad_dma
         [JsonIgnore]
         private const string SettingsDirectory = "Configuration";
 
+        public Config()
+        {
+            ShowEnemyDistance = true;
+            DefaultZoom = 100;
+            EnemyCount = false;
+            Font = 0;
+            FontSize = 13;
+            PaintColors = DefaultPaintColors;
+            PlayerAimLineLength = 1000;
+            ShowNames = false;
+            UIScale = 100;
+            TechMarkerScale = 100;
+            ZoomInKey = Keys.Up;
+            ZoomOutKey = Keys.Down;
+            ZoomStep = 1;
+            VSync = false;
+
+            // ESP
+            ESPFontSize = 10f;
+            EspShowDistance = true;
+            EspShowHealth = false;
+            EspShowBox = false;
+            EspMaxDistance = 1000f; // 1000M is max
+            EspTextColor = DefaultPaintColors["EspText"];
+            EnableEsp = true;
+            EspBones = true;
+            EspShowAllies = true;
+
+            // Scope Magnifications
+            FirstScopeMagnification = 4.0f;  // e.g., 4x scope
+            SecondScopeMagnification = 6.0f; // e.g., 6x scope
+            ThirdScopeMagnification = 12.0f; // e.g., 12x scope
+        }
+
+        /// <summary>
+        /// Attempt to load Config.json
+        /// </summary>
+        /// <param name="config">'Config' instance to populate.</param>
+        /// <returns></returns>
         public static bool TryLoadConfig(out Config config)
         {
             lock (_lock)
@@ -156,6 +252,7 @@ namespace squad_dma
                 );
             }
         }
+        #endregion
     }
 
     public class JsonKeyEnumConverter : JsonConverter<Keys>

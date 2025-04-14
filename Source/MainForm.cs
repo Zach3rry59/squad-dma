@@ -46,6 +46,8 @@ namespace squad_dma
         private const double PAN_SMOOTHNESS = 0.1;
         private const int PAN_INTERVAL = 10;
 
+        private EspOverlay _espOverlay;
+
         private bool _isWaitingForKey = false;
         private Button _currentKeybindButton = null;
         private Keys _currentKeybind = Keys.None;
@@ -88,6 +90,12 @@ namespace squad_dma
         public MainForm()
         {
             _config = Program.Config;
+
+            if (_config.EnableEsp)
+            {
+                _espOverlay = new EspOverlay();
+                _espOverlay.Show();
+            }
             InitializeComponent();
             InitializeDarkMode();
             InitializeFormSettings();
