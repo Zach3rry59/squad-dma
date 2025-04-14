@@ -192,6 +192,13 @@ namespace squad_dma
             e.Cancel = true; // Cancel shutdown
             this.Enabled = false; // Lock window
 
+            Program.Log("Closing form");
+            if (_espOverlay != null && !_espOverlay.IsDisposed)
+            {
+                _espOverlay.Close();
+                _espOverlay = null;
+            }
+
             CleanupLoadedBitmaps();
             Config.SaveConfig(_config); // Save Config to Config.json
             Memory.Shutdown(); // Wait for Memory Thread to gracefully exit
@@ -1946,7 +1953,19 @@ namespace squad_dma
 
         private void btnRestartRadar_Click(object sender, EventArgs e)
         {
+            if (_espOverlay != null && !_espOverlay.IsDisposed)
+            {
+                _espOverlay.Close();
+                _espOverlay = null;
+            }
+            Thread.Sleep(500);
             Memory.Restart();
+            Thread.Sleep(500);
+            if (_config.EnableEsp)
+            {
+                _espOverlay = new EspOverlay();
+                _espOverlay.Show();
+            }
         }
 
         private bool DumpNames()

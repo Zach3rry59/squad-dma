@@ -23,10 +23,10 @@ namespace squad_dma
             Matrix4x4 rotation = new Matrix4x4
             {
                 M11 = (float)(1 - 2 * (yy + zz)),
-                M12 = (float)(2 * (xy - zw)),
+                M12 = (float)-(2 * (xy - zw)),
                 M13 = (float)(2 * (xz + yw)),
                 M14 = 0,
-                M21 = (float)(2 * (xy + zw)),
+                M21 = (float)-(2 * (xy + zw)),
                 M22 = (float)(1 - 2 * (xx + zz)),
                 M23 = (float)(2 * (yz - xw)),
                 M24 = 0,

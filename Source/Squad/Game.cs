@@ -379,15 +379,17 @@ namespace squad_dma
 
             string pawnClassName = Memory.GetActorClassName(pawnPtr);
             bool isInVehicle = !pawnClassName.Contains("BP_Soldier");
+            double cameraFOV = ReadCameraFOV();
 
             if (isInVehicle)
             {
+                _currentFOV = cameraFOV;
                 _isAimingDownSights = false;
                 _hasPipScope = false;
                 return true;
             }
 
-            return UpdateOnFootPlayerInfo(scatterMap, pawnPtr);
+            return UpdateOnFootPlayerInfo(scatterMap, pawnPtr, cameraFOV);
         }
 
         private double ReadCameraFOV()
@@ -416,13 +418,14 @@ namespace squad_dma
         /// <param name="scatterMap">The scatter read map for batch memory reading</param>
         /// <param name="pawnPtr">Pointer to the pawn</param>
         /// <returns>True if successful</returns>
-        private bool UpdateOnFootPlayerInfo(ScatterReadMap scatterMap, ulong pawnPtr)
+        private bool UpdateOnFootPlayerInfo(ScatterReadMap scatterMap, ulong pawnPtr, double cameraFOV)
         {
             ulong inventoryPtr = Memory.ReadPtr(pawnPtr + Offsets.ASQSoldier.InventoryComponent);
             if (inventoryPtr == 0)
             {
                 _isAimingDownSights = false;
                 _hasPipScope = false;
+                _currentFOV = cameraFOV;
                 return true;
             }
 
@@ -434,10 +437,11 @@ namespace squad_dma
             {
                 _isAimingDownSights = false;
                 _hasPipScope = false;
+                _currentFOV = cameraFOV;
                 return true;
             }
 
-            return UpdateWeaponInfo(scatterMap, weaponPtr);
+            return UpdateWeaponInfo(scatterMap, weaponPtr, cameraFOV);
         }
 
         /// <summary>
@@ -446,20 +450,20 @@ namespace squad_dma
         /// <param name="scatterMap">The scatter read map</param>
         /// <param name="weaponPtr">Pointer to the current weapon</param>
         /// <returns>True if successful</returns>
-        private bool UpdateWeaponInfo(ScatterReadMap scatterMap, ulong weaponPtr)
+        private bool UpdateWeaponInfo(ScatterReadMap scatterMap, ulong weaponPtr, double cameraFOV)
         {
             _currentWeaponPtr = weaponPtr; // Update current weapon pointer
 
             var round2 = scatterMap.AddRound();
             round2.AddEntry<byte>(0, 1, weaponPtr + Offsets.ASQWeapon.bAimingDownSights);
             round2.AddEntry<ulong>(0, 2, weaponPtr + Offsets.ASQWeapon.CachedPipScope);
-            round2.AddEntry<float>(0, 3, weaponPtr + Offsets.ASQWeapon.CurrentFOV);
+            round2.AddEntry<double>(0, 3, weaponPtr + Offsets.ASQWeapon.CurrentFOV);
             round2.AddEntry<byte>(0, 4, weaponPtr + Offsets.ASQWeapon.CurrentState);
             scatterMap.Execute();
 
             _isAimingDownSights = scatterMap.Results[0][1].TryGetResult<byte>(out byte ads) && ads == 1;
             _hasPipScope = scatterMap.Results[0][2].TryGetResult<ulong>(out ulong pipScopePtr) && pipScopePtr != 0;
-            float weaponFOV = scatterMap.Results[0][3].TryGetResult<float>(out float currFOV) && currFOV > 5f && currFOV < 180f ? currFOV : (float)_currentFOV;
+            double weaponFOV = scatterMap.Results[0][3].TryGetResult<double>(out double currFOV) && currFOV > 5f && currFOV < 180f ? currFOV : (double)_currentFOV;
             _isFiring = scatterMap.Results[0][4].TryGetResult<byte>(out byte firing) && firing == 1;
 
             double finalFOV = _currentFOV; // Default to camera FOV
@@ -475,7 +479,7 @@ namespace squad_dma
             // Assign the final FOV only once
             _currentFOV = finalFOV;
 
-            // Program.Log($"ADS: {_isAimingDownSights}, PipScope: {_hasPipScope}, Firing: {_isFiring}, WeaponPtr: 0x{_currentWeaponPtr:X}, FOV: {_currentFOV}, WeaponFOV: {weaponFOV}, CameraFOV: {_currentFOV}");
+            Program.Log($"ADS: {_isAimingDownSights}, PipScope: {_hasPipScope}, Firing: {_isFiring}, WeaponPtr: 0x{_currentWeaponPtr:X}, FOV: {_currentFOV}, WeaponFOV: {weaponFOV}, CameraFOV: {_currentFOV}");
 
             return true;
         }
@@ -486,7 +490,7 @@ namespace squad_dma
         /// <param name="pipScopePtr">Pointer to the pip scope</param>
         /// <param name="weaponFOV">Base weapon FOV</param>
         /// <param name="fov">Reference to the FOV to adjust</param>
-        private void UpdateScopeMagnification(ulong pipScopePtr, float weaponFOV, ref double fov)
+        private void UpdateScopeMagnification(ulong pipScopePtr, double weaponFOV, ref double fov)
         {
             // Directly read the CurrentMagnificationLevel using ReadValue
             int magnificationIdx = Memory.ReadValue<int>(pipScopePtr + Offsets.USQPipScopeCaptureComponent.CurrentMagnificationLevel); // Vérifier cet offset pour UE5
@@ -515,7 +519,7 @@ namespace squad_dma
         /// <param name="magnificationDesired">Desired magnification level</param>
         /// <param name="defaultFOV">Default FOV</param>
         /// <returns>Adjusted FOV</returns>
-        private double GetZoomedFOV(float magnificationDesired, float defaultFOV)
+        private double GetZoomedFOV(float magnificationDesired, double defaultFOV)
         {
             double defaultFOVRad = defaultFOV * 0.00872664626; // Conversion degrés -> radians (π / 360)
             double zoomedHalfFOVRad = Math.Atan(Math.Tan(defaultFOVRad) / magnificationDesired);
