@@ -78,12 +78,6 @@
         public const uint PlayerState = 0x248;
         public const uint Controller = 0x260;
     }
-
-    public struct MeshComponent // UskeletalMeshComponent
-    {
-        public const uint CachedBoneSpaceTransforms = 0x0740;
-    }
-
     public struct Controller
     {
         public const uint PlayerState = 0x230;
