@@ -1,4 +1,4 @@
-    using Offsets;
+using Offsets;
 
 namespace squad_dma.Source.Squad.Debug
 {
@@ -7,174 +7,6 @@ namespace squad_dma.Source.Squad.Debug
         public DebugSoldier(ulong playerController, bool inGame)
             : base(playerController, inGame)
         {
-        }
-
-        private enum EMovementMode : byte
-        {
-            MOVE_None = 0,
-            MOVE_Walking = 1,
-            MOVE_NavWalking = 2,
-            MOVE_Falling = 3,
-            MOVE_Swimming = 4,
-            MOVE_Flying = 5,
-            MOVE_Custom = 6,
-            MOVE_MAX = 7
-        }
-        
-        /// <summary>
-        /// Logs the current values of all features for debugging purposes
-        /// </summary>
-        public void LogCurrentValues()
-        {
-            try
-            {
-                if (!IsLocalPlayerValid())
-                {
-                    Program.Log("LocalPlayer is not valid - cannot log values");
-                    return;
-                }
-                
-                // Get the cached values from one of the features
-                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
-                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
-                ulong inventoryComponent = Memory.ReadPtr(soldierActor + ASQSoldier.InventoryComponent);
-                ulong currentWeapon = inventoryComponent != 0 ? 
-                    Memory.ReadPtr(inventoryComponent + USQPawnInventoryComponent.CurrentWeapon) : 0;
-                ulong characterMovement = Memory.ReadPtr(soldierActor + Character.CharacterMovement);
-                
-                if (soldierActor == 0)
-                {
-                    Program.Log("SoldierActor is null - cannot log values");
-                    return;
-                }
-
-                Program.Log("=== LOCAL SOLDIER DEBUG VALUES ===");
-                
-                // Suppression values
-                float underSuppressionPercentage = Memory.ReadValue<float>(soldierActor + ASQSoldier.UnderSuppressionPercentage);
-                float maxSuppressionPercentage = Memory.ReadValue<float>(soldierActor + ASQSoldier.MaxSuppressionPercentage);
-                float suppressionMultiplier = Memory.ReadValue<float>(soldierActor + ASQSoldier.SuppressionMultiplier);
-                
-                Program.Log($"Suppression:");
-                Program.Log($"  - UnderSuppressionPercentage: {underSuppressionPercentage}");
-                Program.Log($"  - MaxSuppressionPercentage: {maxSuppressionPercentage}");
-                Program.Log($"  - SuppressionMultiplier: {suppressionMultiplier}");
-                
-                // Interaction distances
-                float useInteractDistance = Memory.ReadValue<float>(soldierActor + ASQSoldier.UseInteractDistance);
-                float interactableRadiusMultiplier = Memory.ReadValue<float>(soldierActor + ASQSoldier.InteractableRadiusMultiplier);
-                
-                Program.Log($"Interaction Distances:");
-                Program.Log($"  - UseInteractDistance: {useInteractDistance}");
-                Program.Log($"  - InteractableRadiusMultiplier: {interactableRadiusMultiplier}");
-                
-                // Speed hack
-                float timeDilation = Memory.ReadValue<float>(soldierActor + Actor.CustomTimeDilation);
-                
-                Program.Log($"Speed Hack:");
-                Program.Log($"  - CustomTimeDilation: {timeDilation}");
-                
-                // AirStuck
-                if (characterMovement != 0)
-                {
-                    byte movementMode = Memory.ReadValue<byte>(characterMovement + CharacterMovementComponent.MovementMode);
-                    byte replicatedMovementMode = Memory.ReadValue<byte>(characterMovement + Character.ReplicatedMovementMode);
-                    byte replicateMovement = Memory.ReadValue<byte>(soldierActor + Actor.bReplicateMovement);
-                    float maxFlySpeed = Memory.ReadValue<float>(characterMovement + CharacterMovementComponent.MaxFlySpeed);
-                    float maxCustomMovementSpeed = Memory.ReadValue<float>(characterMovement + CharacterMovementComponent.MaxCustomMovementSpeed);
-                    float maxAcceleration = Memory.ReadValue<float>(characterMovement + CharacterMovementComponent.MaxAcceleration);
-                    
-                    Program.Log($"AirStuck:");
-                    Program.Log($"  - MovementMode: {movementMode} ({(EMovementMode)movementMode})");
-                    Program.Log($"  - ReplicatedMovementMode: {replicatedMovementMode} ({(EMovementMode)replicatedMovementMode})");
-                    Program.Log($"  - bReplicateMovement: {replicateMovement}");
-                    Program.Log($"  - MaxFlySpeed: {maxFlySpeed}");
-                    Program.Log($"  - MaxCustomMovementSpeed: {maxCustomMovementSpeed}");
-                    Program.Log($"  - MaxAcceleration: {maxAcceleration}");
-                }
-                
-                // HideActor
-                byte hideActorReplicateMovement = Memory.ReadValue<byte>(soldierActor + Actor.bReplicateMovement);
-                byte hidden = Memory.ReadValue<byte>(soldierActor + Actor.bHidden);
-                
-                Program.Log($"HideActor:");
-                Program.Log($"  - bReplicateMovement: {hideActorReplicateMovement}");
-                Program.Log($"  - bHidden: {hidden}");
-                
-                // Collision
-                ulong rootComponent = Memory.ReadPtr(soldierActor + Actor.RootComponent);
-                if (rootComponent != 0)
-                {
-                    ulong bodyInstanceAddr = rootComponent + 0x2c8;
-                    byte collisionEnabled = Memory.ReadValue<byte>(bodyInstanceAddr + 0x20);
-                    
-                    Program.Log($"Collision:");
-                    Program.Log($"  - CollisionEnabled: {collisionEnabled}");
-                }
-                
-                // Quick Zoom
-                ulong cameraManager = Memory.ReadPtr(_playerController + PlayerController.PlayerCameraManager);
-                if (cameraManager != 0)
-                {
-                    float defaultFOV = Memory.ReadValue<float>(cameraManager + PlayerCameraManager.DefaultFOV);
-                    
-                    Program.Log($"Quick Zoom:");
-                    Program.Log($"  - DefaultFOV: {defaultFOV}");
-                }
-                
-                // Current Weapon Info
-                if (currentWeapon != 0)
-                {
-                    Program.Log($"Current Weapon:");
-                    
-                    // Shooting in Main Base
-                    ulong currentItemStaticInfo = Memory.ReadPtr(inventoryComponent + ASQSoldier.CurrentItemStaticInfo);
-                    if (currentItemStaticInfo != 0)
-                    {
-                        bool usableInMainBase = Memory.ReadValue<bool>(currentItemStaticInfo + ASQSoldier.bUsableInMainBase);
-                        
-                        Program.Log($"Shooting in Main Base:");
-                        Program.Log($"  - bUsableInMainBase: {usableInMainBase}");
-                    }
-                    
-                    // Rapid Fire
-                    ulong weaponConfigOffset = currentWeapon + ASQWeapon.WeaponConfig;
-                    float timeBetweenShots = Memory.ReadValue<float>(weaponConfigOffset + FSQWeaponData.TimeBetweenShots);
-                    float timeBetweenSingleShots = Memory.ReadValue<float>(weaponConfigOffset + FSQWeaponData.TimeBetweenSingleShots);
-                    
-                    Program.Log($"Rapid Fire:");
-                    Program.Log($"  - TimeBetweenShots: {timeBetweenShots}");
-                    Program.Log($"  - TimeBetweenSingleShots: {timeBetweenSingleShots}");
-                    
-                    // Infinite Ammo
-                    byte infiniteAmmo = Memory.ReadValue<byte>(weaponConfigOffset + FSQWeaponData.bInfiniteAmmo);
-                    byte infiniteMags = Memory.ReadValue<byte>(weaponConfigOffset + FSQWeaponData.bInfiniteMags);
-                    byte createProjectileOnServer = Memory.ReadValue<byte>(weaponConfigOffset + FSQWeaponData.bCreateProjectileOnServer);
-                    
-                    Program.Log($"Infinite Ammo:");
-                    Program.Log($"  - bInfiniteAmmo: {infiniteAmmo}");
-                    Program.Log($"  - bInfiniteMags: {infiniteMags}");
-                    Program.Log($"  - bCreateProjectileOnServer: {createProjectileOnServer}");
-                    
-                    // Quick Swap
-                    float equipDuration = Memory.ReadValue<float>(currentWeapon + ASQEquipableItem.EquipDuration);
-                    float unequipDuration = Memory.ReadValue<float>(currentWeapon + ASQEquipableItem.UnequipDuration);
-                    float cachedEquipDuration = Memory.ReadValue<float>(currentWeapon + ASQEquipableItem.CachedEquipDuration);
-                    float cachedUnequipDuration = Memory.ReadValue<float>(currentWeapon + ASQEquipableItem.CachedUnequipDuration);
-                    
-                    Program.Log($"Quick Swap:");
-                    Program.Log($"  - EquipDuration: {equipDuration}");
-                    Program.Log($"  - UnequipDuration: {unequipDuration}");
-                    Program.Log($"  - CachedEquipDuration: {cachedEquipDuration}");
-                    Program.Log($"  - CachedUnequipDuration: {cachedUnequipDuration}");
-                }
-                
-                Program.Log("=============================");
-            }
-            catch (Exception ex)
-            {
-                Program.Log($"Error in LogCurrentValues: {ex.Message}");
-            }
         }
         
         /// <summary>
@@ -262,6 +94,85 @@ namespace squad_dma.Source.Squad.Debug
                 Program.Log("=============================");
             }
             catch { /* Silently fail */ }
+        }
+
+        /// <summary>
+        /// Disables camera recoil by setting bIsCameraRecoilActive to false
+        /// </summary>
+        public void DisableCameraRecoil()
+        {
+            try
+            {
+                if (!IsLocalPlayerValid()) return;
+
+                Program.Log("=== DISABLING CAMERA RECOIL ===");
+
+                ulong playerState = Memory.ReadPtr(_playerController + Controller.PlayerState);
+                if (playerState == 0) return;
+
+                ulong soldierActor = Memory.ReadPtr(playerState + ASQPlayerState.Soldier);
+                if (soldierActor == 0) return;
+
+                // Set bIsCameraRecoilActive to false
+                Memory.WriteValue(soldierActor + ASQSoldier.bIsCameraRecoilActive, false);
+                Program.Log("Successfully disabled camera recoil");
+                Program.Log("=============================");
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Error disabling camera recoil: {ex.Message}");
+            }
+        }
+
+        // Works but it takes time to "reload" the grenade
+        // I want it to be instant
+        public void ModifyGrenadeProperties()
+        {
+            try
+            {
+                if (!IsLocalPlayerValid()) return;
+
+                Program.Log("=== MODIFYING GRENADE PROPERTIES ===");
+
+                // Get current weapon (which is a grenade)
+                ulong currentWeapon = Memory.ReadPtr(
+                    Memory.ReadPtr(
+                        Memory.ReadPtr(
+                            Memory.ReadPtr(_playerController + Controller.PlayerState) + ASQPlayerState.Soldier
+                        ) + ASQSoldier.InventoryComponent
+                    ) + USQPawnInventoryComponent.CurrentWeapon
+                );
+
+                if (currentWeapon == 0)
+                {
+                    Program.Log("Failed to get current weapon");
+                    return;
+                }
+
+                // Set ammo count to 10
+                Memory.WriteValue(currentWeapon + (ulong)ASQEquipableItem.ItemCount, 10);
+                Memory.WriteValue(currentWeapon + (ulong)ASQEquipableItem.MaxItemCount, 10);
+                Program.Log("Set grenade ammo count to 10");
+
+                // Get grenade config pointer
+                var grenadeConfigPtr = currentWeapon + (ulong)ASQGrenade.GrenadeConfig;
+                Program.Log($"Grenade config at: 0x{grenadeConfigPtr:X}");
+
+                // Modify grenade properties
+                Memory.WriteValue(grenadeConfigPtr + (ulong)FSQGrenadeData.bInfiniteAmmo, true);
+                Memory.WriteValue(grenadeConfigPtr + (ulong)FSQGrenadeData.ThrowReadyTime, 0.0f);
+                Memory.WriteValue(grenadeConfigPtr + (ulong)FSQGrenadeData.OverhandThrowTime, 0.0f);
+                Memory.WriteValue(grenadeConfigPtr + (ulong)FSQGrenadeData.UnderhandThrowTime, 0.0f);
+                Memory.WriteValue(grenadeConfigPtr + (ulong)FSQGrenadeData.EquipTime, 0.0f); 
+                Memory.WriteValue(grenadeConfigPtr + (ulong)FSQGrenadeData.ReloadTime, 0.0f);
+
+                Program.Log("Modified grenade properties");
+                Program.Log("=============================");
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"Error modifying grenade properties: {ex.Message}");
+            }
         }
     }
 } 

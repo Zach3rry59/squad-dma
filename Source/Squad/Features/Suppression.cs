@@ -33,12 +33,16 @@ namespace squad_dma.Source.Squad.Features
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.UnderSuppressionPercentage, 0.0f);
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.MaxSuppressionPercentage, 0.0f);
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.SuppressionMultiplier, 0.0f);
+
+                    Memory.WriteValue(soldierActor + ASQSoldier.bIsCameraRecoilActive, false);
                 }
                 else
                 {
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.UnderSuppressionPercentage, 0);
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.MaxSuppressionPercentage, -1);
                     Memory.WriteValue<float>(soldierActor + ASQSoldier.SuppressionMultiplier, 1);
+
+                    Memory.WriteValue(soldierActor + ASQSoldier.bIsCameraRecoilActive, true);
                 }
             }
             catch (Exception ex)

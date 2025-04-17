@@ -162,15 +162,19 @@ namespace squad_dma
             _mapCanvas.MouseDown += skMapCanvas_MouseDown;
             _mapCanvas.MouseDoubleClick += skMapCanvas_MouseDoubleClick;
             _mapCanvas.MouseUp += skMapCanvas_MouseUp;
-            tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
 
-            // Add Local Soldier feature event handlers
             chkDisableSuppression.CheckedChanged += ChkDisableSuppression_CheckedChanged;
             chkSetInteractionDistances.CheckedChanged += ChkSetInteractionDistances_CheckedChanged;
             chkAllowShootingInMainBase.CheckedChanged += ChkAllowShootingInMainBase_CheckedChanged;
             chkSpeedHack.CheckedChanged += ChkSetTimeDilation_CheckedChanged;
             chkAirStuck.CheckedChanged += ChkAirStuck_CheckedChanged;
             chkHideActor.CheckedChanged += ChkHideActor_CheckedChanged;
+            chkQuickZoom.CheckedChanged += ChkQuickZoom_CheckedChanged;
+            chkRapidFire.CheckedChanged += ChkRapidFire_CheckedChanged;
+            chkShowEnemyDistance.CheckedChanged += ChkShowEnemyDistance_CheckedChanged;
+            chkInfiniteAmmo.CheckedChanged += ChkInfiniteAmmo_CheckedChanged;
+            chkQuickSwap.CheckedChanged += ChkQuickSwap_CheckedChanged;
+            chkForceFullAuto.CheckedChanged += ChkForceFullAuto_CheckedChanged;
         }
 
         private void LoadInitialData()
@@ -337,6 +341,9 @@ namespace squad_dma
             chkQuickSwap.Checked = _config.QuickSwap;
             chkQuickSwap.CheckedChanged += ChkQuickSwap_CheckedChanged;
 
+            chkForceFullAuto.Checked = _config.ForceFullAuto;
+            chkForceFullAuto.CheckedChanged += ChkForceFullAuto_CheckedChanged;
+
             // Keybind buttons
             btnKeybindSpeedHack.Text = _config.KeybindSpeedHack == Keys.None ? "None" : _config.KeybindSpeedHack.ToString();
             btnKeybindAirStuck.Text = _config.KeybindAirStuck == Keys.None ? "None" : _config.KeybindAirStuck.ToString();
@@ -366,12 +373,8 @@ namespace squad_dma
 
         private void HandleKeyboardInput()
         {
-            bool shift = ModifierKeys.HasFlag(Keys.Shift);
-            bool ctrl = ModifierKeys.HasFlag(Keys.Control);
-            bool alt = ModifierKeys.HasFlag(Keys.Alt);
-
             // Hold-to-activate features
-            if (_config.KeybindQuickZoom != Keys.None && InputManager.IsKeyDown(_config.KeybindQuickZoom) && chkQuickZoom.Checked)
+            if (_config.KeybindQuickZoom != Keys.None && InputManager.IsKeyDown((int)_config.KeybindQuickZoom) && chkQuickZoom.Checked)
             {
                 if (!_isHolding_QuickZoom)
                 {
@@ -386,20 +389,20 @@ namespace squad_dma
             }
 
             // Handle zoom controls
-            if (InputManager.IsKeyDown(_config.KeybindZoomIn))
+            if (InputManager.IsKeyDown((int)_config.KeybindZoomIn))
                 ZoomIn(_config.ZoomStep);
-            else if (InputManager.IsKeyDown(_config.KeybindZoomOut))
+            else if (InputManager.IsKeyDown((int)_config.KeybindZoomOut))
                 ZoomOut(_config.ZoomStep);
 
             // Handle feature toggles with keybinds
-            if (InputManager.IsKeyPressed(_config.KeybindSpeedHack) && chkSpeedHack.Checked)
+            if (InputManager.IsKeyPressed((int)_config.KeybindSpeedHack) && chkSpeedHack.Checked)
             {
                 _config.SetSpeedHack = !_config.SetSpeedHack;
                 Memory._game?.SetSpeedHack(_config.SetSpeedHack);
                 Config.SaveConfig(_config);
                 UpdateStatusIndicator(lblStatusSpeedHack, _config.SetSpeedHack);
             }
-            if (InputManager.IsKeyPressed(_config.KeybindAirStuck) && chkAirStuck.Checked)
+            if (InputManager.IsKeyPressed((int)_config.KeybindAirStuck) && chkAirStuck.Checked)
             {
                 _config.SetAirStuck = !_config.SetAirStuck;
                 Memory._game?.SetAirStuck(_config.SetAirStuck);
@@ -412,7 +415,7 @@ namespace squad_dma
                     Memory._game?.DisableCollision(_config.DisableCollision);
                 }
             }
-            if (InputManager.IsKeyPressed(_config.KeybindHideActor) && chkHideActor.Checked)
+            if (InputManager.IsKeyPressed((int)_config.KeybindHideActor) && chkHideActor.Checked)
             {
                 _config.SetHideActor = !_config.SetHideActor;
                 Memory._game?.SetHideActor(_config.SetHideActor);
@@ -421,15 +424,15 @@ namespace squad_dma
             }
 
             // Handle other keybinds
-            if (InputManager.IsKeyPressed(_config.KeybindToggleEnemyDistance))
+            if (InputManager.IsKeyPressed((int)_config.KeybindToggleEnemyDistance))
             {
                 ToggleEnemyDistance();
             }
-            if (InputManager.IsKeyPressed(_config.KeybindToggleMap))
+            if (InputManager.IsKeyPressed((int)_config.KeybindToggleMap))
                 ToggleMap();
-            if (InputManager.IsKeyPressed(_config.KeybindToggleFullscreen))
+            if (InputManager.IsKeyPressed((int)_config.KeybindToggleFullscreen))
                 ToggleFullscreen(FormBorderStyle is FormBorderStyle.Sizable);
-            if (InputManager.IsKeyPressed(_config.KeybindDumpNames))
+            if (InputManager.IsKeyPressed((int)_config.KeybindDumpNames))
                 DumpNames();
         }
 
@@ -660,11 +663,16 @@ namespace squad_dma
             if (!btnToggleMap.Enabled)
                 return false;
 
-            _mapSelectionIndex = (_mapSelectionIndex + 1) % _maps.Count;
+            if (_mapSelectionIndex == _maps.Count - 1)
+                _mapSelectionIndex = 0; // Start over when end of maps reached
+            else
+                _mapSelectionIndex++; // Move onto next map
+
             tabRadar.Text = $"Radar ({_maps[_mapSelectionIndex].Name})";
-            _mapChangeTimer.Restart();
+            _mapChangeTimer.Restart(); // Start delay
             ClearPointsOfInterest();
             Program.Log("Toggled Map");
+
             return true;
         }
 
@@ -868,11 +876,6 @@ namespace squad_dma
             }
         }
 
-        private void TabControl_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            // Handle tab control selection changes if needed
-        }
-
         private void HandleGameStateChange()
         {
             var currentGameStatus = Memory.GameStatus;
@@ -920,45 +923,56 @@ namespace squad_dma
 
         private async Task ApplyFeaturesAsync()
         {
-            for (int i = 0; i < 10; i++) 
+            const int retryDelay = 250;
+
+            while (true)
             {
-                if (Memory._game != null)
+                if (Memory._game != null && Memory._game.InGame)
                 {
-                    await Task.Delay(1000); 
-                    
-                    if (_config.DisableSuppression)
-                        Memory._game?.SetSuppression(true);
-                    
-                    if (_config.SetInteractionDistances)
-                        Memory._game?.SetInteractionDistances(true);
-                    
-                    if (_config.AllowShootingInMainBase)
-                        Memory._game?.SetShootingInMainBase(true);
-                    
-                    if (_config.SetSpeedHack)
-                        Memory._game?.SetSpeedHack(true);
-                    
-                    if (_config.SetAirStuck)
-                        Memory._game?.SetAirStuck(true);
-                    
-                    if (_config.SetHideActor)
-                        Memory._game?.SetHideActor(true);
-                        
-                    if (_config.RapidFire)
-                        Memory._game?.SetRapidFire(true);
-                        
-                    if (_config.InfiniteAmmo)
-                        Memory._game?.SetInfiniteAmmo(true);
-                        
-                    if (_config.QuickSwap)
-                        Memory._game?.SetQuickSwap(true);
-                        
-                    if (_config.DisableCollision)
-                        Memory._game?.DisableCollision(true);
-                        
-                    break;
+                    try
+                    {
+                        if (Memory._game._soldierManager?.IsLocalPlayerValid() == true)
+                        {
+                            if (_config.DisableSuppression)
+                                Memory._game.SetSuppression(true);
+                            
+                            if (_config.SetInteractionDistances)
+                                Memory._game.SetInteractionDistances(true);
+                            
+                            if (_config.AllowShootingInMainBase)
+                                Memory._game.SetShootingInMainBase(true);
+                            
+                            if (_config.SetSpeedHack)
+                                Memory._game.SetSpeedHack(true);
+                            
+                            if (_config.SetAirStuck)
+                                Memory._game.SetAirStuck(true);
+                            
+                            if (_config.SetHideActor)
+                                Memory._game.SetHideActor(true);
+                                
+                            if (_config.RapidFire)
+                                Memory._game.SetRapidFire(true);
+                                
+                            if (_config.InfiniteAmmo)
+                                Memory._game.SetInfiniteAmmo(true);
+                                
+                            if (_config.QuickSwap)
+                                Memory._game.SetQuickSwap(true);
+                                
+                            if (_config.DisableCollision)
+                                Memory._game.DisableCollision(true);
+
+                            if (_config.ForceFullAuto)
+                                Memory._game.SetForceFullAuto(true);
+
+                            return;
+                        }
+                    }
+                    catch { }
                 }
-                await Task.Delay(500);
+
+                await Task.Delay(retryDelay);
             }
         }
         #endregion
@@ -1047,6 +1061,10 @@ namespace squad_dma
                     CleanupLoadedBitmaps();
                     ClearPointsOfInterest();
                     LoadMapBitmaps();
+                }
+                else
+                {
+                    Program.Log($"Map Error: Current map '{currentMap}' is not configured. Please add this map name to the corresponding map configuration file.");
                 }
             }
         }
@@ -2046,7 +2064,13 @@ namespace squad_dma
             Memory._game?.SetQuickSwap(_config.QuickSwap);
             Config.SaveConfig(_config);
         }
-        #endregion
+
+        private void ChkForceFullAuto_CheckedChanged(object sender, EventArgs e)
+        {
+            _config.ForceFullAuto = chkForceFullAuto.Checked;
+            Memory._game?.SetForceFullAuto(_config.ForceFullAuto);
+            Config.SaveConfig(_config);
+        }
         #endregion
         #endregion
         #endregion
@@ -2063,7 +2087,9 @@ namespace squad_dma
         {
 
         }
+        #endregion
 
+        #region keybinds
         private void StartKeybindCapture(Button button)
         {
             if (_isWaitingForKey) return;
@@ -2371,5 +2397,5 @@ namespace squad_dma
 
         }
     }
-
+    #endregion
 }

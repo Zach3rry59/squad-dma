@@ -130,6 +130,9 @@ namespace squad_dma
         [JsonPropertyName("quickSwap")]
         public bool QuickSwap { get; set; } = false;
 
+        [JsonPropertyName("forceFullAuto")]
+        public bool ForceFullAuto { get; set; } = false;
+
         [JsonPropertyName("keybindSpeedHack")]
         public Keys KeybindSpeedHack { get; set; } = Keys.None;
 

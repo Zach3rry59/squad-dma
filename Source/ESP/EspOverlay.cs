@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Numerics;
 using SharpDX.DirectWrite;
 using System.Diagnostics;
+using System;
 
 namespace squad_dma
 {
@@ -80,12 +81,12 @@ namespace squad_dma
             { ActorType.Mine, "Mine" },
             { ActorType.Motorcycle, "Motorcycle" },
             { ActorType.RallyPoint, "Rally Point" },
-            { ActorType.Tank, "Tank" },
-            { ActorType.TankMGS, "Tank MGS" },
+            { ActorType.Tank, "Heavy Tank" },
+            { ActorType.TankMGS, "Medium Tank" },
             { ActorType.TrackedAPC, "Tracked APC" },
-            { ActorType.TrackedLogistics, "Tracked Logistics" },
+            { ActorType.TrackedLogistics, "Half Track" },
             { ActorType.TrackedAPCArtillery, "Tracked APC Artillery" },
-            { ActorType.TrackedIFV, "Tracked IFV" },
+            { ActorType.TrackedIFV, "Light Tank" },
             { ActorType.TrackedJeep, "Tracked Jeep" },
             { ActorType.TransportHelicopter, "Transport Helicopter" },
             { ActorType.TruckAntiAir, "Truck Anti-Air" },
@@ -105,8 +106,6 @@ namespace squad_dma
             ActorType.TrackedJeep, ActorType.TransportHelicopter, ActorType.TruckAntiAir, ActorType.TruckArtillery,
             ActorType.TruckLogistics, ActorType.TruckTransport, ActorType.TruckTransportArmed
         };
-
-        private static readonly List<(UActor actor, Vector2 screenPos, float distance)> visibleActors = new List<(UActor, Vector2, float)>();
 
         public EspOverlay()
         {
@@ -144,7 +143,12 @@ namespace squad_dma
             vehicleBrush = new SolidColorBrush(renderTarget, new RawColor4(1.0f, 0.0f, 0.0f, 1.0f));
             boneBrush = brush;
             healthBrush = new SolidColorBrush(renderTarget, new RawColor4(0.0f, 1.0f, 0.0f, 1.0f));
-            textFormat = new SharpDX.DirectWrite.TextFormat(new SharpDX.DirectWrite.Factory(), "Verdana", Program.Config.ESPFontSize);
+            textFormat = new SharpDX.DirectWrite.TextFormat(new SharpDX.DirectWrite.Factory(), "Verdana", Program.Config.ESPFontSize)
+            {
+                TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
+                ParagraphAlignment = SharpDX.DirectWrite.ParagraphAlignment.Center,
+                WordWrapping = SharpDX.DirectWrite.WordWrapping.NoWrap // Prevent text wrapping
+            };
         }
 
         private void StartRenderLoop()
@@ -159,7 +163,6 @@ namespace squad_dma
                     stopwatch.Restart();
                     var memoryStart = Stopwatch.StartNew();
                     bool isMemoryReady = Memory.Ready;
-                    //Program.Log($"Memory.Ready time: {memoryStart.ElapsedMilliseconds}ms"); //performance
                     if (!isMemoryReady)
                     {
                         renderTarget.BeginDraw();
@@ -173,9 +176,8 @@ namespace squad_dma
 
                     RenderFrame();
                     int elapsedMs = (int)stopwatch.ElapsedMilliseconds;
-                    int targetMs = 8; // 16 = ~60 FPS 6 = 144 FPS
+                    int targetMs = 8;
                     int sleepMs = Math.Max(1, targetMs - elapsedMs);
-                    //Program.Log($"Frame time: {elapsedMs}ms, Sleeping: {sleepMs}ms"); //performance
                     Thread.Sleep(sleepMs);
                     wasReadyLastFrame = true;
                 }
@@ -209,11 +211,47 @@ namespace squad_dma
 
             var copyStart = Stopwatch.StartNew();
             actorsCopy = new Dictionary<ulong, UActor>(Game.Actors);
-            //Program.Log($"Actor copy time: {copyStart.ElapsedMilliseconds}ms"); //performance
 
             DrawEsp(actorsCopy);
             renderTarget.EndDraw();
-            //Program.Log($"Total frame render time: {frameStart.ElapsedMilliseconds}ms"); //performance
+        }
+
+        private RawRectangleF CalculatePlayerBox(UActor actor, Vector2 screenPos, MinimalViewInfo viewInfo)
+        {
+            const float playerHeight = 175f;
+            const float halfHeight = playerHeight / 2f;
+            const float aspectRatio = 0.4f;
+
+            Vector3 middlePos = actor.Position;
+            Vector3 feetPos = middlePos - new Vector3(0, 0, halfHeight);
+            Vector3 headPos = middlePos + new Vector3(0, 0, halfHeight);
+
+            Vector2 feetScreen = Camera.WorldToScreen(viewInfo, feetPos);
+            Vector2 headScreen = Camera.WorldToScreen(viewInfo, headPos);
+
+            if (feetScreen == Vector2.Zero || headScreen == Vector2.Zero)
+                return new RawRectangleF(0, 0, 0, 0);
+
+            float topY = Math.Min(headScreen.Y, feetScreen.Y);
+            float bottomY = Math.Max(headScreen.Y, feetScreen.Y);
+            float height = bottomY - topY;
+            if (height <= 0)
+                return new RawRectangleF(0, 0, 0, 0);
+
+            float width = height * aspectRatio;
+            float leftX = screenPos.X - width / 2f;
+            float rightX = screenPos.X + width / 2f;
+
+            const float padding = 6f;
+            return new RawRectangleF(leftX - padding, topY - padding, rightX + padding, bottomY + padding);
+        }
+
+        private (float width, float height) GetTextMetrics(string text)
+        {
+            using (var textLayout = new TextLayout(new SharpDX.DirectWrite.Factory(), text, textFormat, 1000f, 100f))
+            {
+                return (textLayout.Metrics.Width, textLayout.Metrics.Height);
+            }
         }
 
         private void DrawEsp(Dictionary<ulong, UActor> actors)
@@ -225,14 +263,12 @@ namespace squad_dma
                 return;
             }
 
-            var viewInfoStart = Stopwatch.StartNew();
             var viewInfo = new MinimalViewInfo
             {
                 Location = Game.LocalPlayer.Position,
                 Rotation = Game.LocalPlayer.Rotation3D,
                 FOV = Game.CurrentFOV
             };
-            //Program.Log($"ViewInfo fetch time: {viewInfoStart.ElapsedMilliseconds}ms"); //performance
 
             Vector3 camPos = viewInfo.Location;
             float maxDistance = Program.Config.EspMaxDistance;
@@ -240,12 +276,16 @@ namespace squad_dma
             bool showAllies = Program.Config.EspShowAllies;
             var playerColor = brush.Color;
 
-            visibleActors.Clear();
+            var visibleActors = new List<(UActor actor, Vector2 screenPos, float distance)>();
+
             long totalWtsTime = 0;
             int wtsCalls = 0;
             foreach (var actor in actors.Values)
             {
-                if (actor == null || actor.Position == Vector3.Zero || !actor.IsAlive)
+                if (actor == null || actor.Position == Vector3.Zero)
+                    continue;
+
+                if (actor.ActorType == ActorType.Player && !actor.IsAlive)
                     continue;
 
                 float distance = Vector3.Distance(camPos, actor.Position) / 100f;
@@ -268,42 +308,63 @@ namespace squad_dma
 
                 visibleActors.Add((actor, screenPos, distance));
             }
-            if (wtsCalls > 0)
-                //Program.Log($"WorldToScreen total time: {totalWtsTime}ms, Calls: {wtsCalls}, Avg: {totalWtsTime / wtsCalls}ms"); //performance
 
-                foreach (var (actor, screenPos, distance) in visibleActors)
+            foreach (var (actor, screenPos, distance) in visibleActors)
+            {
+                if (actor.ActorType == ActorType.Player)
                 {
-                    if (actor.ActorType == ActorType.Player)
+                    RawRectangleF boxRect = CalculatePlayerBox(actor, screenPos, viewInfo);
+                    if ((boxRect.Left == 0 && boxRect.Top == 0 && boxRect.Right == 0 && boxRect.Bottom == 0) &&
+                        Program.Config.EspBones && actor.BoneScreenPositions != null)
                     {
-                        if (Program.Config.EspBones && actor.BoneScreenPositions != null)
-                        {
-                            DrawBoneLines(actor.BoneScreenPositions);
-                            RawRectangleF boxRect = GetBoxFromBones(actor.BoneScreenPositions);
-                            if (boxRect.Left != 0 || boxRect.Top != 0 || boxRect.Right != 0 || boxRect.Bottom != 0)
-                            {
-                                if (Program.Config.EspShowBox)
-                                    renderTarget.DrawRectangle(boxRect, boneBrush);
-
-                                string nameText = GetNameText(actor);
-                                RawRectangleF nameRect = new RawRectangleF(boxRect.Left, boxRect.Top - 20f, boxRect.Left + 200f, boxRect.Top);
-                                brush.Color = playerColor;
-                                renderTarget.DrawText(nameText, textFormat, nameRect, brush);
-
-                                string distanceText = Program.Config.EspShowDistance ? $"[{(int)distance}m]" : "";
-                                RawRectangleF distanceRect = new RawRectangleF(boxRect.Left, boxRect.Bottom, boxRect.Left + 200f, boxRect.Bottom + 20f);
-                                renderTarget.DrawText(distanceText, textFormat, distanceRect, brush);
-
-                                if (Program.Config.EspShowHealth && actor.Health >= 0)
-                                    DrawHealthBar(boxRect, actor.Health);
-                            }
-                        }
+                        boxRect = GetBoxFromBones(actor.BoneScreenPositions);
                     }
-                    else if (IsVehicle(actor))
+
+                    if (boxRect.Left == 0 && boxRect.Top == 0 && boxRect.Right == 0 && boxRect.Bottom == 0)
+                        continue;
+
+                    if (Program.Config.EspShowBox)
+                        renderTarget.DrawRectangle(boxRect, boneBrush);
+
+                    float boxCenterX = (boxRect.Left + boxRect.Right) / 2f;
+                    float boxWidth = boxRect.Right - boxRect.Left;
+
+                    if (Program.Config.ShowNames)
                     {
-                        DrawVehicleBox(actor, screenPos, distance);
+                        string nameText = GetNameText(actor);
+                        var (textWidth, textHeight) = GetTextMetrics(nameText);
+                        float rectWidth = Math.Max(boxWidth, textWidth);
+                        RawRectangleF nameRect = new RawRectangleF(
+                            boxCenterX - rectWidth / 2f, boxRect.Top - textHeight - 5f,
+                            boxCenterX + rectWidth / 2f, boxRect.Top - 5f
+                        );
+                        brush.Color = playerColor;
+                        renderTarget.DrawText(nameText, textFormat, nameRect, brush);
                     }
+
+                    if (Program.Config.EspShowDistance)
+                    {
+                        string distanceText = $"[{(int)distance}m]";
+                        var (textWidth, textHeight) = GetTextMetrics(distanceText);
+                        float rectWidth = Math.Max(boxWidth, textWidth);
+                        RawRectangleF distanceRect = new RawRectangleF(
+                            boxCenterX - rectWidth / 2f, boxRect.Bottom + 5f,
+                            boxCenterX + rectWidth / 2f, boxRect.Bottom + textHeight + 5f
+                        );
+                        renderTarget.DrawText(distanceText, textFormat, distanceRect, brush);
+                    }
+
+                    if (Program.Config.EspShowHealth && actor.Health >= 0)
+                        DrawHealthBar(boxRect, actor.Health);
+
+                    if (Program.Config.EspBones && actor.BoneScreenPositions != null)
+                        DrawBoneLines(actor.BoneScreenPositions);
                 }
-            //Program.Log($"DrawEsp time: {espStart.ElapsedMilliseconds}ms, Actors processed: {visibleActors.Count}"); //performance
+                else if (IsVehicle(actor))
+                {
+                    DrawVehicleBox(actor, screenPos, distance);
+                }
+            }
         }
 
         private string GetEspText(UActor actor, float distance)
@@ -318,7 +379,8 @@ namespace squad_dma
 
         private bool IsVehicle(UActor actor)
         {
-            return VehicleTypes.Contains(actor.ActorType);
+            bool isVehicle = VehicleTypes.Contains(actor.ActorType);
+            return isVehicle;
         }
 
         private void DrawVehicleBox(UActor actor, Vector2 screenPos, float distance)
@@ -344,30 +406,44 @@ namespace squad_dma
             renderTarget.DrawRectangle(vehicleRect, vehicleBrush);
 
             string vehicleText = GetEspText(actor, distance);
-            renderTarget.DrawText(vehicleText, textFormat, new RawRectangleF(
-                screenPos.X - 50, screenPos.Y - halfSize - 20, screenPos.X + 50, screenPos.Y - halfSize), vehicleBrush);
+            var (textWidth, textHeight) = GetTextMetrics(vehicleText);
+            float boxWidth = vehicleRect.Right - vehicleRect.Left;
+            float rectWidth = Math.Max(boxWidth, textWidth);
+            float boxCenterX = (vehicleRect.Left + vehicleRect.Right) / 2f;
+            RawRectangleF textRect = new RawRectangleF(
+                boxCenterX - rectWidth / 2f, vehicleRect.Top - textHeight - 5f,
+                boxCenterX + rectWidth / 2f, vehicleRect.Top - 5f
+            );
+            renderTarget.DrawText(vehicleText, textFormat, textRect, vehicleBrush);
         }
 
-        private void DrawBoneLines(Vector2[] screenPositions)
+        void DrawBoneLines(Vector2[] screenPositions)
         {
-            DrawLine(screenPositions[0], screenPositions[1], boneBrush); // Head -> Neck
-            DrawLine(screenPositions[1], screenPositions[2], boneBrush); // Neck -> Torso
-            DrawLine(screenPositions[2], screenPositions[3], boneBrush); // Torso -> Spine
-            DrawLine(screenPositions[3], screenPositions[4], boneBrush); // Spine -> Pelvis
-            DrawLine(screenPositions[2], screenPositions[5], boneBrush); // Torso -> Right arm
-            DrawLine(screenPositions[5], screenPositions[6], boneBrush);
-            DrawLine(screenPositions[6], screenPositions[7], boneBrush);
-            DrawLine(screenPositions[7], screenPositions[8], boneBrush);
-            DrawLine(screenPositions[2], screenPositions[9], boneBrush); // Torso -> Left arm
-            DrawLine(screenPositions[9], screenPositions[10], boneBrush);
-            DrawLine(screenPositions[10], screenPositions[11], boneBrush);
-            DrawLine(screenPositions[11], screenPositions[12], boneBrush);
-            DrawLine(screenPositions[4], screenPositions[13], boneBrush); // Pelvis -> Right leg
-            DrawLine(screenPositions[13], screenPositions[14], boneBrush);
-            DrawLine(screenPositions[14], screenPositions[15], boneBrush);
-            DrawLine(screenPositions[4], screenPositions[16], boneBrush); // Pelvis -> Left leg
-            DrawLine(screenPositions[16], screenPositions[17], boneBrush);
-            DrawLine(screenPositions[17], screenPositions[18], boneBrush);
+            if (screenPositions == null || screenPositions.Length == 0)
+                return;
+
+            int[] boneIds = { 11, 9, 8, 7, 5, 14, 15, 16, 17, 38, 39, 40, 41, 68, 63, 64, 66, 69, 70, 71, 73 };
+
+            var boneConnections = new List<(int, int)>
+            {
+                (0, 2), (2, 3), (3, 4), (2, 5), (5, 6), (6, 7), (7, 8),
+                (2, 9), (9, 10), (10, 11), (11, 12), (4, 13), (13, 14),
+                (14, 15), (15, 16), (4, 17), (17, 18), (18, 19), (19, 20),
+            };
+
+            foreach (var (startIndex, endIndex) in boneConnections)
+            {
+                if (startIndex < 0 || startIndex >= screenPositions.Length ||
+                    endIndex < 0 || endIndex >= screenPositions.Length ||
+                    screenPositions[startIndex] == Vector2.Zero || screenPositions[endIndex] == Vector2.Zero)
+                    continue;
+
+                renderTarget.DrawLine(
+                    screenPositions[startIndex].ToRawVector2(),
+                    screenPositions[endIndex].ToRawVector2(),
+                    boneBrush
+                );
+            }
         }
 
         private RawRectangleF GetBoxFromBones(Vector2[] screenPositions)
@@ -382,8 +458,8 @@ namespace squad_dma
             if (head == Vector2.Zero || rightFoot == Vector2.Zero || leftFoot == Vector2.Zero)
                 return new RawRectangleF(0, 0, 0, 0);
 
-            float topY = head.Y;
-            float bottomY = Math.Max(rightFoot.Y, leftFoot.Y);
+            float topY = Math.Min(head.Y, Math.Min(rightFoot.Y, leftFoot.Y));
+            float bottomY = Math.Max(head.Y, Math.Max(rightFoot.Y, leftFoot.Y));
             float leftX = Math.Min(head.X, Math.Min(rightFoot.X, leftFoot.X));
             float rightX = Math.Max(head.X, Math.Max(rightFoot.X, leftFoot.X));
 
@@ -411,12 +487,6 @@ namespace squad_dma
             return actor.ActorType == ActorType.Player
                 ? (Program.Config.ShowNames ? actor.Name : "")
                 : (ActorTypeNames.TryGetValue(actor.ActorType, out var typeName) ? typeName : "");
-        }
-
-        private void DrawLine(Vector2 start, Vector2 end, SolidColorBrush lineBrush)
-        {
-            if (start != Vector2.Zero && end != Vector2.Zero)
-                renderTarget.DrawLine(start.ToRawVector2(), end.ToRawVector2(), lineBrush);
         }
 
         protected override void OnClosed(EventArgs e)

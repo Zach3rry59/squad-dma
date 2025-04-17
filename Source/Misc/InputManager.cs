@@ -4,216 +4,292 @@ using Vmmsharp;
 
 namespace squad_dma
 {
-    public class InputManager
+    internal static class InputManager
     {
-        private static bool keyboardInitialized = false;
-        private static bool hasLoggedFailure = false;
+        private static bool _initialized = false;
 
-        private static long lastUpdateTicks = 0;
-        private static ulong gafAsyncKeyStateExport;
-        private static byte[] currentStateBitmap = new byte[64];
-        private static byte[] previousStateBitmap = new byte[64];
-        public static readonly ConcurrentDictionary<int, byte> pressedKeys = new ConcurrentDictionary<int, byte>();
+        private static long _lastUpdateTicks = 0;
+        private static ulong _gafAsyncKeyStateExport;
 
-        private static Vmm vmmInstance;
-        private static VmmProcess winlogon;
+        private static byte[] _currentStateBitmap = new byte[64];
+        private static byte[] _previousStateBitmap = new byte[64];
+        private static readonly ConcurrentDictionary<int, byte> _pressedKeys = new ConcurrentDictionary<int, byte>();
 
-        private static int initAttempts = 0;
+        private static Vmm _hVMM;
+        private static VmmProcess _winLogon;
+
+        private static int _initAttempts = 0;
         private const int MAX_ATTEMPTS = 3;
         private const int DELAY = 500;
+        private const int KEY_CHECK_DELAY = 100;
 
-        private static int currentBuild;
-        private static int updateBuildRevision;
+        private static int _currentBuild;
+        private static int _updateBuildRevision;
 
-        public static bool IsManagerLoaded => InputManager.keyboardInitialized;
+        private static readonly Dictionary<int, bool> _keyPressedStates = new Dictionary<int, bool>();
 
-        static InputManager() { }
-
-        public static void SetVmmInstance(Vmm vmmInstance)
+        public static bool IsReady => _initialized;
+        private static readonly Dictionary<int, KeyStateChangedHandler> _keyEvents = new();
+        private static readonly object _eventLock = new();
+        static InputManager()
         {
-            InputManager.vmmInstance = vmmInstance;
+            _hVMM = Memory.vmmInstance;
+
+            new Thread(Worker)
+            {
+                IsBackground = true
+            }.Start();
         }
 
-        public static bool InitInputManager()
+        /// <summary>
+        /// Attempts to load Input Manager.
+        /// </summary>
+        public static void Initialize()
         {
-            while (InputManager.initAttempts < InputManager.MAX_ATTEMPTS)
-            {
-                if (InputManager.InitKeyboard())
-                {
-                    Program.Log("Keyboard manager successfully initialized.");
-                    return true;
-                }
 
-                Thread.Sleep(DELAY);
-                Program.Log($"Failed to load keyboard manager. Retrying in {DELAY}ms.");
-            }
-
-            if (!hasLoggedFailure)
-            {
-                Program.Log($"Failed to initialize keyboard manager after {InputManager.MAX_ATTEMPTS} attempts. Zoom/dezoom functionality will be disabled.");
-                hasLoggedFailure = true;
-            }
-            InputManager.keyboardInitialized = false;
-            return false;
+            if (InputManager.InitKeyboard())
+                Program.Log("InputManager Initialized");
+            else
+                Program.Log("ERROR Initializing Input Manager");
         }
 
         private static bool InitKeyboard()
         {
-            if (InputManager.keyboardInitialized)
+            if (_initialized)
                 return true;
 
             try
             {
-                var currentBuild = InputManager.vmmInstance.RegValueRead("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\CurrentBuild", out _);
-                InputManager.currentBuild = int.Parse(Encoding.Unicode.GetString(currentBuild));
+                var currentBuild = _hVMM.RegValueRead("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\CurrentBuild", out _);
+                _currentBuild = int.Parse(Encoding.Unicode.GetString(currentBuild));
 
-                var UBR = InputManager.vmmInstance.RegValueRead("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\UBR", out _);
-                InputManager.updateBuildRevision = BitConverter.ToInt32(UBR);
+                var UBR = _hVMM.RegValueRead("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\UBR", out _);
+                _updateBuildRevision = BitConverter.ToInt32(UBR);
 
-                var tmpProcess = InputManager.vmmInstance.Process("winlogon.exe");
-                InputManager.winlogon = InputManager.vmmInstance.Process(tmpProcess.PID | Vmm.PID_PROCESS_WITH_KERNELMEMORY);
+                var tmpProcess = _hVMM.Process("winlogon.exe");
+                _winLogon = _hVMM.Process(tmpProcess.PID | Vmm.PID_PROCESS_WITH_KERNELMEMORY);
 
-                if (InputManager.winlogon == null)
+                if (_winLogon == null)
                 {
                     Program.Log("Winlogon process not found");
-                    InputManager.initAttempts++;
+                    _initAttempts++;
                     return false;
                 }
 
-                if (InputManager.currentBuild >= 26000)
-                {
-                    return InitKeyboardForNewWindows();
-                }
-
-                return InputManager.currentBuild > 22000
-                    ? InputManager.InitKeyboardForNewWindows()
-                    : InputManager.InitKeyboardForOldWindows();
+                return _currentBuild > 22000 ? InputManager.InitKeyboardForNewWindows() : InputManager.InitKeyboardForOldWindows();
             }
             catch (Exception ex)
             {
-                Program.Log($"Error initializing keyboard: {ex.Message}");
-                InputManager.initAttempts++;
+                Program.Log($"Error initializing keyboard: {ex.Message}\n{ex.StackTrace}");
+                _initAttempts++;
                 return false;
             }
         }
 
+        private static VmmProcess.ModuleEntry GetModuleInfo(VmmProcess process, string moduleToFind)
+        {
+            var modules = process.MapModule();
+            var moduleLower = moduleToFind.ToLower();
+
+            foreach (var module in modules)
+            {
+                if (module.sFullName.ToLower().Contains(moduleLower))
+                {
+                    return module;
+                }
+            }
+
+            return new VmmProcess.ModuleEntry();
+        }
+
         private static bool InitKeyboardForNewWindows()
         {
-            var csrssProcesses = InputManager.vmmInstance.Processes
-                .Where(p => p.Name.Equals("csrss.exe", StringComparison.OrdinalIgnoreCase))
-                .ToList();
+
+            var csrssProcesses = _hVMM.Processes.Where(p => p.Name.Equals("csrss.exe", StringComparison.OrdinalIgnoreCase)).ToList();
 
             foreach (var csrss in csrssProcesses)
             {
                 try
                 {
-                    ulong win32ksgdBase = csrss.GetModuleBase("win32ksgd.sys");
-                    ulong gSessionGlobalSlots = 0;
-
-                    if (win32ksgdBase == 0 || (InputManager.currentBuild >= 26100 && InputManager.updateBuildRevision >= 2605))
-                    {
-                        ulong win32kbase = csrss.GetModuleBase("win32k.sys");
-                        if (win32kbase == 0)
-                            continue;
-
-                        if (InputManager.updateBuildRevision >= 3323)
-                        {
-                            gSessionGlobalSlots = win32kbase + 0x824F0;
-                        }
-                        else if (InputManager.updateBuildRevision >= 3037)
-                        {
-                            gSessionGlobalSlots = win32kbase + 0x82530;
-                        }
-                        else
-                        {
-                            gSessionGlobalSlots = win32kbase + 0x82538;
-                        }
-                    }
-                    else
-                    {
-                        gSessionGlobalSlots = win32ksgdBase + 0x3110;
-                    }
-
-                    if (gSessionGlobalSlots == 0) continue;
-
-                    ulong userSessionState = 0;
-                    for (int i = 0; i < 4; i++)
-                    {
-                        var t1 = csrss.MemReadAs<ulong>(gSessionGlobalSlots);
-                        if (t1.Value == 0) continue;
-
-                        var t2 = csrss.MemReadAs<ulong>(t1.Value + (ulong)(8 * i));
-                        if (t2.Value == 0) continue;
-
-                        var t3 = csrss.MemReadAs<ulong>(t2.Value);
-                        userSessionState = t3.Value;
-
-                        if (userSessionState > 0x7FFFFFFFFFFF)
-                            break;
-                    }
-
-                    if (userSessionState == 0)
+                    // Get win32k module info
+                    if (!TryGetWin32kInfo(csrss, out ulong win32kBase, out ulong win32kSize))
                         continue;
 
-                    if (InputManager.currentBuild >= 26100 && InputManager.updateBuildRevision >= 2605)
-                    {
-                        InputManager.gafAsyncKeyStateExport = userSessionState +
-                            (InputManager.updateBuildRevision >= 3323 ? (ulong)0x3808 : (ulong)0x3830);
-                    }
-                    else if (InputManager.currentBuild >= 26100)
-                    {
-                        InputManager.gafAsyncKeyStateExport = userSessionState +
-                            (InputManager.updateBuildRevision >= 2314 ? (ulong)0x3828 : (ulong)0x3820);
-                    }
-                    else if (InputManager.currentBuild >= 22631 && InputManager.updateBuildRevision >= 3810)
-                    {
-                        InputManager.gafAsyncKeyStateExport = userSessionState + (ulong)0x36A8;
-                    }
-                    else
-                    {
-                        InputManager.gafAsyncKeyStateExport = userSessionState + (ulong)0x3690;
-                    }
+                    // Find session globals pointer
+                    if (!TryFindSessionPointer(csrss, win32kBase, win32kSize, out ulong gSessionGlobalSlots))
+                        continue;
 
-                    if (InputManager.gafAsyncKeyStateExport > 0x7FFFFFFFFFFF)
-                    {
-                        InputManager.keyboardInitialized = true;
-                        Program.Log("Keyboard handler initialized");
-                        return true;
-                    }
+                    // Resolve user session state
+                    if (!TryResolveUserSessionState(csrss, gSessionGlobalSlots, out ulong userSessionState))
+                        continue;
+
+                    // Get async key state offset
+                    if (!TryGetAsyncKeyStateOffset(csrss, userSessionState, out ulong keyStateAddress))
+                        continue;
+
+                    _gafAsyncKeyStateExport = keyStateAddress;
+                    _initialized = true;
+                    return true;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Program.Log($"KEYBOARD ERR: {ex.Message}\n{ex.StackTrace}");
+                }
             }
 
-            InputManager.initAttempts++;
+            _initAttempts++;
             Program.Log("Failed to initialize keyboard handler for new Windows version");
             return false;
+        }
+
+        private static bool TryGetWin32kInfo(VmmProcess process, out ulong baseAddress, out ulong moduleSize)
+        {
+            baseAddress = 0;
+            moduleSize = 0;
+
+            baseAddress = process.GetModuleBase("win32ksgd.sys");
+
+            if (baseAddress != 0)
+            {
+                var moduleInfo = GetModuleInfo(process, "win32ksgd.sys");
+                moduleSize = moduleInfo.cbImageSize;
+                return true;
+            }
+
+            baseAddress = process.GetModuleBase("win32k.sys");
+
+            if (baseAddress != 0)
+            {
+                var moduleInfo = GetModuleInfo(process, "win32k.sys");
+                moduleSize = moduleInfo.cbImageSize;
+                return true;
+            }
+
+            Program.Log("Failed to get module win32k info");
+            return false;
+        }
+
+        private static bool TryFindSessionPointer(VmmProcess process, ulong baseAddr, ulong size, out ulong sessionPtr)
+        {
+            sessionPtr = 0;
+
+            var gSessionPtr = Memory.FindSignature("48 8B 05 ? ? ? ? 48 8B 04 C8", baseAddr, baseAddr + size, process);
+
+            if (gSessionPtr == 0)
+            {
+                gSessionPtr = Memory.FindSignature("48 8B 05 ? ? ? ? FF C9", baseAddr, baseAddr + size, process);
+                if (gSessionPtr == 0)
+                {
+                    Program.Log("Failed to find g_session_global_slots");
+                    return false;
+                }
+            }
+
+            var relativeOffsetResult = process.MemReadAs<int>(gSessionPtr + 3);
+
+            if (relativeOffsetResult.Value == 0)
+            {
+                Program.Log("Failed to read relative offset");
+                return false;
+            }
+
+            sessionPtr = gSessionPtr + 7 + (ulong)relativeOffsetResult.Value;
+
+            return true;
+        }
+
+        private static bool TryResolveUserSessionState(VmmProcess process, ulong sessionPtr, out ulong sessionState)
+        {
+            sessionState = 0;
+
+            for (int i = 0; i < 4; i++)
+            {
+                var t1 = process.MemReadAs<ulong>(sessionPtr);
+                if (t1.Value == 0)
+                    continue;
+
+                var t2 = process.MemReadAs<ulong>(t1.Value + (ulong)(8 * i));
+                if (t2.Value == 0)
+                    continue;
+
+                var t3 = process.MemReadAs<ulong>(t2.Value);
+                if (t3.Value == 0)
+                    continue;
+
+                sessionState = t3.Value;
+
+                if (sessionState > 0x7FFFFFFFFFFF)
+                    return true;
+            }
+
+            return sessionState != 0;
+        }
+
+        private static bool TryGetAsyncKeyStateOffset(VmmProcess process, ulong sessionState, out ulong keyStateAddr)
+        {
+            keyStateAddr = 0;
+
+            var win32kbaseBase = process.GetModuleBase("win32kbase.sys");
+
+            if (win32kbaseBase == 0)
+            {
+                Program.Log("Failed to get module win32kbase info");
+                return false;
+            }
+
+            var win32kbaseInfo = GetModuleInfo(process, "win32kbase.sys");
+            var win32kbaseSize = win32kbaseInfo.cbImageSize;
+
+            var ptr = Memory.FindSignature(
+                "48 8D 90 ? ? ? ? E8 ? ? ? ? 0F 57 C0",
+                win32kbaseBase,
+                win32kbaseBase + win32kbaseSize,
+                process);
+
+            if (ptr == 0)
+            {
+                Program.Log("Failed to find offset for gafAsyncKeyStateExport");
+                return false;
+            }
+
+            var offsetResult = process.MemReadAs<uint>(ptr + 3);
+
+            if (offsetResult.Value == 0)
+            {
+                Program.Log("Failed to read session offset");
+                return false;
+            }
+
+            keyStateAddr = sessionState + offsetResult.Value;
+
+            return keyStateAddr > 0x7FFFFFFFFFFF;
         }
 
         private static bool InitKeyboardForOldWindows()
         {
             Program.Log("Older Windows version detected, attempting to resolve via EAT");
 
-            var exports = InputManager.winlogon.MapModuleEAT("win32kbase.sys");
+            var exports = _winLogon.MapModuleEAT("win32kbase.sys");
             var gafAsyncKeyStateExport = exports.FirstOrDefault(e => e.sFunction == "gafAsyncKeyState");
 
             if (!string.IsNullOrEmpty(gafAsyncKeyStateExport.sFunction) && gafAsyncKeyStateExport.vaFunction >= 0x7FFFFFFFFFFF)
             {
-                InputManager.gafAsyncKeyStateExport = gafAsyncKeyStateExport.vaFunction;
-                InputManager.keyboardInitialized = true;
+                _gafAsyncKeyStateExport = gafAsyncKeyStateExport.vaFunction;
+                _initialized = true;
                 Program.Log("Resolved export via EAT");
                 return true;
             }
 
             Program.Log("Failed to resolve via EAT, attempting to resolve with PDB");
 
-            var pdb = InputManager.winlogon.Pdb("win32kbase.sys");
+            var pdb = _winLogon.Pdb("win32kbase.sys");
 
             if (pdb != null && pdb.SymbolAddress("gafAsyncKeyState", out ulong gafAsyncKeyState))
             {
                 if (gafAsyncKeyState >= 0x7FFFFFFFFFFF)
                 {
-                    InputManager.gafAsyncKeyStateExport = gafAsyncKeyState;
-                    InputManager.keyboardInitialized = true;
+                    _gafAsyncKeyStateExport = gafAsyncKeyState;
+                    _initialized = true;
                     Program.Log("Resolved export via PDB");
                     return true;
                 }
@@ -225,15 +301,15 @@ namespace squad_dma
 
         public static unsafe void UpdateKeys()
         {
-            if (!InputManager.keyboardInitialized)
+            if (!_initialized)
                 return;
 
-            Array.Copy(InputManager.currentStateBitmap, InputManager.previousStateBitmap, 64);
+            Array.Copy(_currentStateBitmap, _previousStateBitmap, 64);
 
-            fixed (byte* pb = InputManager.currentStateBitmap)
+            fixed (byte* pb = _currentStateBitmap)
             {
-                var success = InputManager.winlogon.MemRead(
-                    InputManager.gafAsyncKeyStateExport,
+                var success = _winLogon.MemRead(
+                    _gafAsyncKeyStateExport,
                     pb,
                     64,
                     out _,
@@ -243,43 +319,122 @@ namespace squad_dma
                 if (!success)
                     return;
 
-                InputManager.pressedKeys.Clear();
-
+                _pressedKeys.Clear();
                 for (int vk = 0; vk < 256; ++vk)
                 {
-                    if ((InputManager.currentStateBitmap[(vk * 2 / 8)] & 1 << vk % 4 * 2) != 0)
-                        InputManager.pressedKeys.AddOrUpdate(vk, 1, (oldkey, oldvalue) => 1);
+                    if ((_currentStateBitmap[(vk * 2 / 8)] & 1 << vk % 4 * 2) != 0)
+                        _pressedKeys.AddOrUpdate(vk, 1, (oldkey, oldvalue) => 1);
+                }
+                for (int vk = 0; vk < 256; ++vk)
+                {
+                    bool wasDown = (_previousStateBitmap[(vk * 2 / 8)] & (1 << (vk % 4 * 2))) != 0;
+                    bool isDown = (_currentStateBitmap[(vk * 2 / 8)] & (1 << (vk % 4 * 2))) != 0;
+
+                    if (wasDown != isDown)
+                    {
+                        lock (_eventLock)
+                        {
+                            if (_keyEvents.TryGetValue(vk, out var handler))
+                            {
+                                handler?.Invoke(null, new KeyEventArgs(vk, isDown));
+                            }
+                        }
+                    }
                 }
             }
 
-            InputManager.lastUpdateTicks = DateTime.UtcNow.Ticks;
+            _lastUpdateTicks = DateTime.UtcNow.Ticks;
         }
 
-        public static bool IsKeyDown(Keys key)
+        public static void RegisterKeyEvent(int keyCode, KeyStateChangedHandler handler)
         {
-            if (!InputManager.keyboardInitialized || InputManager.gafAsyncKeyStateExport < 0x7FFFFFFFFFFF)
+            lock (_eventLock)
+            {
+                if (_keyEvents.ContainsKey(keyCode))
+                    _keyEvents[keyCode] += handler;
+                else
+                    _keyEvents[keyCode] = handler;
+            }
+        }
+
+        public static void UnregisterKeyEvent(int keyCode, KeyStateChangedHandler handler)
+        {
+            lock (_eventLock)
+            {
+                if (_keyEvents.ContainsKey(keyCode))
+                {
+                    _keyEvents[keyCode] -= handler;
+                    if (_keyEvents[keyCode] == null)
+                        _keyEvents.Remove(keyCode);
+                }
+            }
+        }
+
+        public static bool IsKeyDown(int key)
+        {
+            if (!_initialized || _gafAsyncKeyStateExport < 0x7FFFFFFFFFFF)
                 return false;
 
-            if (DateTime.UtcNow.Ticks - InputManager.lastUpdateTicks > TimeSpan.TicksPerMillisecond * 5)
-                InputManager.UpdateKeys();
-
             var virtualKeyCode = (int)key;
-            return InputManager.pressedKeys.ContainsKey(virtualKeyCode);
+
+            return _pressedKeys.ContainsKey(virtualKeyCode);
         }
 
-        public static bool IsKeyPressed(Keys key)
+        public static bool IsKeyPressed(int key)
         {
-            if (!InputManager.keyboardInitialized || InputManager.gafAsyncKeyStateExport < 0x7FFFFFFFFFFF)
+            if (!_initialized || _gafAsyncKeyStateExport < 0x7FFFFFFFFFFF)
                 return false;
 
-            if (DateTime.UtcNow.Ticks - InputManager.lastUpdateTicks > TimeSpan.TicksPerMillisecond * 5)
-                InputManager.UpdateKeys();
-
             var virtualKeyCode = (int)key;
-            var currentState = (InputManager.currentStateBitmap[(virtualKeyCode * 2 / 8)] & 1 << virtualKeyCode % 4 * 2) != 0;
-            var previousState = (InputManager.previousStateBitmap[(virtualKeyCode * 2 / 8)] & 1 << virtualKeyCode % 4 * 2) != 0;
-
-            return currentState && !previousState;
+            bool isCurrentlyPressed = _pressedKeys.ContainsKey(virtualKeyCode);
+            
+            // If key wasn't pressed before and is now pressed
+            if (!_keyPressedStates.TryGetValue(virtualKeyCode, out bool wasPressed))
+            {
+                _keyPressedStates[virtualKeyCode] = isCurrentlyPressed;
+                return isCurrentlyPressed;
+            }
+            
+            // If key state changed from not pressed to pressed
+            bool isNewPress = !wasPressed && isCurrentlyPressed;
+            _keyPressedStates[virtualKeyCode] = isCurrentlyPressed;
+            
+            return isNewPress;
         }
+
+        /// <summary>
+        /// InputManager Managed thread.
+        /// </summary>
+        private static void Worker()
+        {
+            Program.Log("InputManager thread starting...");
+            while (true)
+            {
+                try
+                {
+                    if (Memory._running)
+                        UpdateKeys();
+                }
+                catch { }
+                finally
+                {
+                    Thread.Sleep(KEY_CHECK_DELAY);
+                }
+            }
+        }
+
+        public class KeyEventArgs : EventArgs
+        {
+            public int KeyCode { get; }
+            public bool IsPressed { get; }
+
+            public KeyEventArgs(int keyCode, bool isPressed)
+            {
+                KeyCode = keyCode;
+                IsPressed = isPressed;
+            }
+        }
+
+        public delegate void KeyStateChangedHandler(object sender, KeyEventArgs e);
     }
 }

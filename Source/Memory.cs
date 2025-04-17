@@ -15,13 +15,12 @@ namespace squad_dma
         /// </summary>
         public static Vmm vmmInstance;
         private static VmmProcess _process;
-        private static volatile bool _running = false;
+        public static volatile bool _running = false;
         private static volatile bool _restart = false;
         private static volatile bool _ready = false;
         private static Thread _workerThread;
         private static CancellationTokenSource _workerCancellationTokenSource;
-        private static uint _pid;
-        private static ulong _squadBase;
+        public static ulong _squadBase;
         public static Game _game;
         private static volatile int _ticks = 0;
         private static readonly Stopwatch _tickSw = new();
@@ -119,8 +118,7 @@ namespace squad_dma
             Memory._tickSw.Start();
             // if you have issues with this initlizting and are on Windows 24h2 please just disable these lines below. 
             // dont have time or knowledge to fix. :(
-            InputManager.SetVmmInstance(Memory.vmmInstance);
-            InputManager.InitInputManager();
+            InputManager.Initialize();
         }
 
         private static void GenerateMMap()
@@ -668,6 +666,76 @@ namespace squad_dma
         #endregion
 
         #region Methods
+        /// <summary>
+        /// Searches for a pattern signature in memory within the specified address range.
+        /// </summary>
+        /// <param name="signature">Pattern signature in the format "AA BB ?? DD" where ?? represents a wildcard.</param>
+        /// <param name="rangeStart">Start address of the search range.</param>
+        /// <param name="rangeEnd">End address of the search range.</param>
+        /// <param name="process">The process to read memory of.</param>
+        /// <returns>Address where the pattern was found, or 0 if not found.</returns>
+        public static ulong FindSignature(string signature, ulong rangeStart, ulong rangeEnd, VmmProcess process)
+        {
+            if (string.IsNullOrEmpty(signature) || rangeStart >= rangeEnd)
+                return 0;
+
+            try
+            {
+                // Read the memory block to search within
+                byte[] buffer = process.MemRead(rangeStart, (uint)(rangeEnd - rangeStart), Vmm.FLAG_NOCACHE);
+
+                if (buffer.Length == 0)
+                    return 0;
+
+                string pat = signature;
+                ulong firstMatch = 0;
+
+                for (ulong i = 0; i < (ulong)buffer.Length; i++)
+                {
+                    if (pat[0] == '?' || buffer[i] == GetByte(pat.Substring(0, 2)))
+                    {
+                        if (firstMatch == 0)
+                            firstMatch = rangeStart + i;
+
+                        if (pat.Length <= 2)
+                            break;
+
+                        pat = pat.Substring(pat[0] == '?' ? 2 : 3);
+                    }
+                    else
+                    {
+                        pat = signature;
+                        firstMatch = 0;
+                    }
+                }
+
+                return firstMatch;
+            }
+            catch (VmmException ex)
+            {
+                Program.Log($"[DMA] Error in FindSignature: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                Program.Log($"[DMA] Error in FindSignature: {ex.Message}");
+            }
+
+            return 0;
+        }
+
+        /// <summary>
+        /// Converts a hex string to a byte value.
+        /// </summary>
+        private static byte GetByte(string hex)
+        {
+            if (hex.Length < 2)
+                return 0;
+
+            byte value = 0;
+            byte.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out value);
+            return value;
+        }
+
         /// <summary>
         /// Sets restart flag to re-initialize the game/pointers from the bottom up.
         /// </summary>

@@ -52,9 +52,47 @@ namespace squad_dma
             chkEnableNoRecoil = new CheckBox();
             chkEnableNoSway = new CheckBox();
             chkEnableNoCameraShake = new CheckBox();
+            grpLocalSoldier = new GroupBox();
+            chkDisableSuppression = new CheckBox();
+            chkSetInteractionDistances = new CheckBox();
+            chkAllowShootingInMainBase = new CheckBox();
+            chkSpeedHack = new CheckBox();
+            chkAirStuck = new CheckBox();
+            chkDisableCollision = new CheckBox();
+            chkHideActor = new CheckBox();
+            chkQuickZoom = new CheckBox();
+            chkRapidFire = new CheckBox();
+            chkInfiniteAmmo = new CheckBox();
+            chkQuickSwap = new CheckBox();
+            chkForceFullAuto = new CheckBox();
+            grpKeybinds = new GroupBox();
+            lblKeybindSpeedHack = new Label();
+            btnKeybindSpeedHack = new Button();
+            lblKeybindAirStuck = new Label();
+            btnKeybindAirStuck = new Button();
+            lblKeybindHideActor = new Label();
+            btnKeybindHideActor = new Button();
+            lblKeybindQuickZoom = new Label();
+            btnKeybindQuickZoom = new Button();
+            lblKeybindToggleEnemyDistance = new Label();
+            btnKeybindToggleEnemyDistance = new Button();
+            lblKeybindToggleMap = new Label();
+            btnKeybindToggleMap = new Button();
+            lblKeybindToggleFullscreen = new Label();
+            btnKeybindToggleFullscreen = new Button();
+            lblStatusSpeedHack = new Label();
+            lblStatusAirStuck = new Label();
+            lblStatusHideActor = new Label();
+            lblStatusToggleEnemyDistance = new Label();
+            lblKeybindDumpNames = new Label();
+            btnKeybindDumpNames = new Button();
+            lblKeybindZoomIn = new Label();
+            btnKeybindZoomIn = new Button();
+            lblKeybindZoomOut = new Label();
+            btnKeybindZoomOut = new Button();
             grpUserInterface = new GroupBox();
-            lblUIScale = new Label();
             lblAimline = new Label();
+            lblUIScale = new Label();
             lblTechMarkerScale = new Label();
             grpRadar = new GroupBox();
             grpEsp = new GroupBox();
@@ -82,44 +120,6 @@ namespace squad_dma
             txtSecondScopeMag = new TextBox();
             lblThirdScopeMag = new Label();
             txtThirdScopeMag = new TextBox();
-            grpRadar = new GroupBox();
-            grpLocalSoldier = new GroupBox();
-            chkDisableSuppression = new CheckBox();
-            chkSetInteractionDistances = new CheckBox();
-            chkAllowShootingInMainBase = new CheckBox();
-            chkSpeedHack = new CheckBox();
-            chkAirStuck = new CheckBox();
-            chkDisableCollision = new CheckBox();
-            chkHideActor = new CheckBox();
-            chkQuickZoom = new CheckBox();
-            chkRapidFire = new CheckBox();
-            chkInfiniteAmmo = new CheckBox();
-            chkQuickSwap = new CheckBox();
-            grpKeybinds = new GroupBox();
-            lblKeybindSpeedHack = new Label();
-            btnKeybindSpeedHack = new Button();
-            lblKeybindAirStuck = new Label();
-            btnKeybindAirStuck = new Button();
-            lblKeybindHideActor = new Label();
-            btnKeybindHideActor = new Button();
-            lblKeybindQuickZoom = new Label();
-            btnKeybindQuickZoom = new Button();
-            lblKeybindToggleEnemyDistance = new Label();
-            btnKeybindToggleEnemyDistance = new Button();
-            lblKeybindToggleMap = new Label();
-            btnKeybindToggleMap = new Button();
-            lblKeybindToggleFullscreen = new Label();
-            btnKeybindToggleFullscreen = new Button();
-            lblStatusSpeedHack = new Label();
-            lblStatusAirStuck = new Label();
-            lblStatusHideActor = new Label();
-            lblStatusToggleEnemyDistance = new Label();
-            lblKeybindDumpNames = new Label();
-            btnKeybindDumpNames = new Button();
-            lblKeybindZoomIn = new Label();
-            btnKeybindZoomIn = new Button();
-            lblKeybindZoomOut = new Label();
-            btnKeybindZoomOut = new Button();
             tabRadar = new TabPage();
             ticketsPanel = new Panel();
             grpMapSetup = new GroupBox();
@@ -154,9 +154,9 @@ namespace squad_dma
             chkShowEnemyDistance.Font = new Font("Segoe UI", 9F);
             chkShowEnemyDistance.Location = new Point(265, 50);
             chkShowEnemyDistance.Name = "chkShowEnemyDistance";
-            chkShowEnemyDistance.Size = new Size(165, 19);
+            chkShowEnemyDistance.Size = new Size(142, 19);
             chkShowEnemyDistance.TabIndex = 15;
-            chkShowEnemyDistance.Text = "Show Enemy Distance (F4)";
+            chkShowEnemyDistance.Text = "Show Enemy Distance";
             toolTip.SetToolTip(chkShowEnemyDistance, "Toggle display of enemy distance on the radar");
             chkShowEnemyDistance.UseVisualStyleBackColor = true;
             // 
@@ -167,7 +167,7 @@ namespace squad_dma
             btnDumpNames.Name = "btnDumpNames";
             btnDumpNames.Size = new Size(200, 30);
             btnDumpNames.TabIndex = 16;
-            btnDumpNames.Text = "Dump Names (F6)";
+            btnDumpNames.Text = "Dump Names";
             toolTip.SetToolTip(btnDumpNames, "Dump entity names in the game instance");
             btnDumpNames.UseVisualStyleBackColor = true;
             btnDumpNames.Click += btnDumpNames_Click;
@@ -241,7 +241,7 @@ namespace squad_dma
             btnToggleMap.Name = "btnToggleMap";
             btnToggleMap.Size = new Size(200, 30);
             btnToggleMap.TabIndex = 2;
-            btnToggleMap.Text = "Toggle Map (F5)";
+            btnToggleMap.Text = "Toggle Map";
             toolTip.SetToolTip(btnToggleMap, "Switch between available maps");
             btnToggleMap.UseVisualStyleBackColor = true;
             btnToggleMap.Click += btnToggleMap_Click;
@@ -347,24 +347,14 @@ namespace squad_dma
             grpWriteSettings.Controls.Add(chkEnableNoSway);
             grpWriteSettings.Controls.Add(chkEnableNoCameraShake);
             grpWriteSettings.Controls.Add(grpLocalSoldier);
-            grpWriteSettings.Location = new Point(503, 399);
+            grpWriteSettings.Location = new Point(505, 399);
             grpWriteSettings.Name = "grpWriteSettings";
             grpWriteSettings.Size = new Size(528, 359);
             grpWriteSettings.TabIndex = 28;
             grpWriteSettings.TabStop = false;
             grpWriteSettings.Text = "Write Settings";
             // 
-            // lblUIScale
-            // 
-            lblUIScale.AutoSize = true;
-            lblUIScale.Font = new Font("Segoe UI", 9F);
-            lblUIScale.Location = new Point(15, 30);
-            lblUIScale.Name = "lblUIScale";
-            lblUIScale.Size = new Size(48, 15);
-            lblUIScale.TabIndex = 13;
-            lblUIScale.Text = "UI Scale";
-            // 
-            // lblAimline
+            // chkEnableNoRecoil
             // 
             chkEnableNoRecoil.AutoSize = true;
             chkEnableNoRecoil.Location = new Point(10, 25);
@@ -410,9 +400,10 @@ namespace squad_dma
             grpLocalSoldier.Controls.Add(chkRapidFire);
             grpLocalSoldier.Controls.Add(chkInfiniteAmmo);
             grpLocalSoldier.Controls.Add(chkQuickSwap);
-            grpLocalSoldier.Location = new Point(0, 110);
+            grpLocalSoldier.Controls.Add(chkForceFullAuto);
+            grpLocalSoldier.Location = new Point(0, 100);
             grpLocalSoldier.Name = "grpLocalSoldier";
-            grpLocalSoldier.Size = new Size(528, 249);
+            grpLocalSoldier.Size = new Size(528, 259);
             grpLocalSoldier.TabIndex = 27;
             grpLocalSoldier.TabStop = false;
             grpLocalSoldier.Text = "Local Soldier Features";
@@ -528,6 +519,17 @@ namespace squad_dma
             chkQuickSwap.Text = "Quick Swap";
             chkQuickSwap.UseVisualStyleBackColor = true;
             // 
+            // chkForceFullAuto
+            // 
+            chkForceFullAuto.AutoSize = true;
+            chkForceFullAuto.Location = new Point(210, 95);
+            chkForceFullAuto.Name = "chkForceFullAuto";
+            chkForceFullAuto.Size = new Size(106, 19);
+            chkForceFullAuto.TabIndex = 10;
+            chkForceFullAuto.Text = "Force Full Auto";
+            chkForceFullAuto.UseVisualStyleBackColor = true;
+            chkForceFullAuto.CheckedChanged += ChkForceFullAuto_CheckedChanged;
+            // 
             // grpKeybinds
             // 
             grpKeybinds.Controls.Add(lblKeybindSpeedHack);
@@ -554,7 +556,7 @@ namespace squad_dma
             grpKeybinds.Controls.Add(btnKeybindZoomIn);
             grpKeybinds.Controls.Add(lblKeybindZoomOut);
             grpKeybinds.Controls.Add(btnKeybindZoomOut);
-            grpKeybinds.Location = new Point(530, 24);
+            grpKeybinds.Location = new Point(505, 23);
             grpKeybinds.Name = "grpKeybinds";
             grpKeybinds.Padding = new Padding(15);
             grpKeybinds.Size = new Size(528, 370);
@@ -786,16 +788,6 @@ namespace squad_dma
             grpUserInterface.TabStop = false;
             grpUserInterface.Text = "User Interface";
             // 
-            // lblUIScale
-            // 
-            lblUIScale.AutoSize = true;
-            lblUIScale.Font = new Font("Segoe UI", 9F);
-            lblUIScale.Location = new Point(15, 31);
-            lblUIScale.Name = "lblUIScale";
-            lblUIScale.Size = new Size(48, 15);
-            lblUIScale.TabIndex = 13;
-            lblUIScale.Text = "UI Scale";
-            // 
             // lblAimline
             // 
             lblAimline.AutoSize = true;
@@ -806,6 +798,16 @@ namespace squad_dma
             lblAimline.TabIndex = 12;
             lblAimline.Text = "Aimline Length";
             lblAimline.Click += lblAimline_Click;
+            // 
+            // lblUIScale
+            // 
+            lblUIScale.AutoSize = true;
+            lblUIScale.Font = new Font("Segoe UI", 9F);
+            lblUIScale.Location = new Point(15, 31);
+            lblUIScale.Name = "lblUIScale";
+            lblUIScale.Size = new Size(48, 15);
+            lblUIScale.TabIndex = 13;
+            lblUIScale.Text = "UI Scale";
             // 
             // lblTechMarkerScale
             // 
@@ -1289,6 +1291,7 @@ namespace squad_dma
         private CheckBox chkRapidFire;
         private CheckBox chkInfiniteAmmo;
         private CheckBox chkQuickSwap;
+        private CheckBox chkForceFullAuto;
         private GroupBox grpKeybinds;
         private Button btnKeybindSpeedHack;
         private Button btnKeybindAirStuck;
